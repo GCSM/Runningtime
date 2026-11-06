@@ -1,0 +1,43 @@
+{% macro icon(name) -%}
+{%- if name == 'today' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+{%- elif name == 'plan' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+{%- elif name == 'progress' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M10 20V5M16 20v-7M22 20H2"/></svg>
+{%- elif name == 'me' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+{%- elif name == 'check' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+{%- elif name == 'x' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+{%- elif name == 'half' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 12h12"/></svg>
+{%- elif name == 'chev' -%}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro status_icon(s) -%}
+<span class="st-{{ s }}" title="{{ s }}">
+{%- if s == 'completed' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12.5l3.5 3.5L17 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif s == 'partial' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
+{%- elif s == 'missed' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+{%- else %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" opacity=".5"/></svg>{% endif -%}
+</span>
+{%- endmacro %}
+
+{% macro workout_row(w, units, today='') -%}
+<details class="t-{{ w.type }}">
+  <summary class="wk {{ 'today' if w.date == today }}">
+    <div class="date"><span>{{ w.date|fmt_date('%a') }}</span><b>{{ w.date|fmt_date('%-d') }}</b></div>
+    <div class="bar"></div>
+    <div class="grow"><div class="b">{{ w.title }}</div>
+      <div class="sm mut">{{ w.distance_km|dist(units) }} · {{ w.duration_min }} min{% if w.actual_km %} · ran {{ w.actual_km|dist(units) }}{% endif %}</div></div>
+    {{ status_icon(w.status) }}
+  </summary>
+  <div class="wk-d">
+    <span class="pill t">{{ w.type }}</span>
+    {% if w.description %}<p style="margin-top:8px">{{ w.description }}</p>{% endif %}
+    {% if w.pace_guidance %}<p style="margin-top:6px"><b>Pace:</b> {{ w.pace_guidance }}</p>{% endif %}
+  </div>
+</details>
+{%- endmacro %}
+
+{% macro ring(pct, big, small) -%}
+<div class="ring"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42" fill="none" stroke-width="10"/>
+<circle class="val" cx="50" cy="50" r="42" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="{{ 263.9 * (1 - pct/100) }}"/></svg>
+<div class="lbl"><b>{{ big }}</b><span>{{ small }}</span></div></div>
+{%- endmacro %}

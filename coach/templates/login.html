@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% set bare = True %}{% block body %}
+<div class="brand"><img src="/static/icon-180.png" alt=""><div><h1>Running Coach</h1>
+<p class="mut">A training plan that adapts to how you actually run.</p></div></div>
+<form method="post" action="/{{ mode }}" class="card stack">
+  {% if mode == 'signup' %}<label class="f"><span class="lab">Name</span><input type="text" name="name" autocomplete="given-name" required></label>{% endif %}
+  <label class="f"><span class="lab">Email</span><input type="email" name="email" autocomplete="email" autocapitalize="none" autocorrect="off" inputmode="email" required></label>
+  <label class="f"><span class="lab">Password{% if mode == 'signup' %} (8+ characters){% endif %}</span><input type="password" name="password" autocomplete="{{ 'new-password' if mode == 'signup' else 'current-password' }}" minlength="{{ 8 if mode == 'signup' else 1 }}" required></label>
+  {% if mode == 'signup' and settings.invite_code %}<label class="f"><span class="lab">Invite code</span><input type="text" name="invite" autocapitalize="none" required></label>{% endif %}
+  <button>{{ 'Create account' if mode == 'signup' else 'Sign in' }}</button>
+</form>
+{% if mode == 'login' %}
+  {% if settings.allow_signups %}<p class="sub right" style="text-align:center">New here? <a href="/signup">Create an account</a></p>{% endif %}
+{% else %}<p class="sub" style="text-align:center">Already have an account? <a href="/login">Sign in</a></p>{% endif %}
+{% endblock %}

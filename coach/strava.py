@@ -37,13 +37,16 @@ class StravaClient:
     def connected(self) -> bool:
         return bool(self.db.kv_get("strava_token"))
 
+    def disconnect(self) -> None:
+        self.db.kv_delete("strava_token")
+
     def athlete_name(self) -> str:
         return (self.db.kv_get("strava_token") or {}).get("athlete_name", "")
 
-    def authorize_url(self) -> str:
+    def authorize_url(self, state: str) -> str:
         q = {
             "client_id": self.s.strava_client_id, "response_type": "code", "approval_prompt": "auto",
-            "redirect_uri": f"{self.s.public_url}/strava/callback", "scope": "read,activity:read_all",
+            "redirect_uri": f"{self.s.public_url}/strava/callback", "scope": "read,activity:read_all", "state": state,
         }
         return f"{AUTH_URL}?{urlencode(q)}"
 

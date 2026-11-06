@@ -115,8 +115,10 @@ class FakeStrava:
 @pytest.fixture
 def svc(tmp_path):
     s = Settings(db_path=str(tmp_path / "t.db"), sync_interval_min=0)
+    db = DB(s.db_path)
+    uid = db.create_user("a@example.com", "A", "x")
     clock = {"d": TODAY}
-    service = CoachService(DB(s.db_path), s, FakeCoach(), FakeStrava(), clock=lambda: clock["d"])
+    service = CoachService(db.for_user(uid), s, FakeCoach(), FakeStrava(), clock=lambda: clock["d"])
     service.clock = clock
     return service
 
@@ -150,27 +152,79 @@ def test_generate_then_adapt_to_strava(svc):
     assert any(w["status"] == "missed" for w in svc.db.get_workouts(end=svc.clock["d"]))
 
 
-def test_web_flow(svc):
-    c = TestClient(create_app(svc.settings, svc))
+FORM = {"goal_preset": "10K", "race_date": str(TODAY + timedelta(weeks=12)), "baseline": "15", "units": "km",
+        "experience": "intermediate", "long_run_day": "sun", "av_tue": "on", "min_tue": "45", "av_thu": "on", "min_thu": "45",
+        "av_sun": "on", "min_sun": "90", "goal_time": "50:00"}
+
+
+def make_client(tmp_path, **kw):
+    s = Settings(db_path=str(tmp_path / "w.db"), sync_interval_min=0, **kw)
+    db = DB(s.db_path)
+    app = create_app(s, db=db, coach=FakeCoach(), strava_factory=lambda udb: FakeStrava(), clock=lambda: TODAY)
+    return TestClient(app), db
+
+
+def signup(c, email="a@example.com", name="Ann", pw="correct-horse"):
+    return c.post("/signup", data={"name": name, "email": email, "password": pw}, follow_redirects=False)
+
+
+def test_auth_gate_and_signup(tmp_path):
+    c, db = make_client(tmp_path)
+    assert c.get("/", follow_redirects=False).headers["location"] == "/login"
+    assert c.get("/healthz").status_code == 200 and c.get("/login").status_code == 200
+    assert c.get("/static/app.css").status_code == 200
+    assert "at least 8" in c.post("/signup", data={"email": "a@b.co", "password": "short"}, follow_redirects=True).text
+    r = signup(c)
+    assert r.status_code == 303 and r.headers["location"] == "/setup"
+    assert db.user_by_email("a@example.com")["pw_hash"].startswith("scrypt$")  # never stored in clear
+    assert c.get("/setup").status_code == 200
+    dup = signup(c, email="A@EXAMPLE.com", name="Dup")  # same email, different case
+    assert dup.headers["location"].startswith("/signup?err=") and "already" in dup.headers["location"]
+    c.post("/logout")
     assert c.get("/", follow_redirects=False).status_code == 303
-    form = {"name": "G", "units": "km", "goal_preset": "10K", "race_date": str(TODAY + timedelta(weeks=12)), "baseline": "15",
-            "experience": "intermediate", "long_run_day": "sun", "av_tue": "on", "min_tue": "45", "av_thu": "on", "min_thu": "45",
-            "av_sun": "on", "min_sun": "90", "goal_time": "50:00"}
-    assert c.post("/setup", data=form, follow_redirects=False).status_code == 303
-    assert svc.db.get_profile().goal_time_s == 3000
-    r = c.post("/plan/generate", follow_redirects=True)
-    assert "Plan created" in r.text and "Race day" not in "" and "This week" in r.text
-    assert "Full plan" in c.get("/plan").text
-    assert c.post("/setup", data={**form, "av_sun": ""}, follow_redirects=True).text.count("long-run day") == 1
-    assert c.post("/review", data={"note": "good"}, follow_redirects=True).status_code == 200
-    assert c.post("/plan/generate", headers={"origin": "http://evil.example"}).status_code == 403
+    assert "Wrong email" in c.post("/login", data={"email": "a@example.com", "password": "nope-nope"}, follow_redirects=True).text
+    assert c.post("/login", data={"email": "A@Example.com", "password": "correct-horse"}, follow_redirects=False).status_code == 303
 
 
-def test_password(svc):
-    s = Settings(db_path=svc.settings.db_path, app_password="pw", sync_interval_min=0)
-    c = TestClient(create_app(s, svc))
-    assert c.get("/").status_code == 401 and c.get("/healthz").status_code == 200
-    assert c.get("/", auth=("me", "pw"), follow_redirects=False).status_code == 303
+def test_signup_controls(tmp_path):
+    c, _ = make_client(tmp_path, allow_signups=False)
+    assert "closed" in c.post("/signup", data={"email": "a@b.co", "password": "longenough"}, follow_redirects=True).text
+    c, _ = make_client(tmp_path, invite_code="sesame")
+    assert "invite code" in c.post("/signup", data={"email": "z@b.co", "password": "longenough", "invite": "nope"}, follow_redirects=True).text
+    assert c.post("/signup", data={"email": "z@b.co", "password": "longenough", "invite": "sesame"}, follow_redirects=False).status_code == 303
+
+
+def test_web_flow_and_user_isolation(tmp_path):
+    a, db = make_client(tmp_path)
+    signup(a)
+    assert a.post("/setup", data=FORM, follow_redirects=False).status_code == 303
+    r = a.post("/plan/generate", follow_redirects=True)
+    assert "Your plan is ready" in r.text and "Today" in r.text
+    for page in ("/plan", "/progress", "/me", "/"):
+        assert a.get(page).status_code == 200
+    assert "long-run day" in a.post("/setup", data={**FORM, "av_sun": ""}, follow_redirects=True).text
+    assert a.post("/review", data={"note": "good"}, follow_redirects=True).status_code == 200
+    assert a.post("/plan/generate", headers={"origin": "http://evil.example"}).status_code == 403
+
+    # A second user in a second browser sees none of user A's data.
+    b = TestClient(a.app)
+    signup(b, "b@example.com", "Bob")
+    assert b.get("/", follow_redirects=False).headers["location"] == "/setup"
+    assert db.for_user(2).get_workouts() == [] and db.for_user(2).get_profile() is None
+    assert len(db.for_user(1).get_workouts()) > 10
+    r = b.post("/plan/generate", follow_redirects=True)
+    assert str(r.url).endswith("/setup") and db.for_user(2).get_workouts() == []
+
+
+def test_delete_account_removes_everything(tmp_path):
+    c, db = make_client(tmp_path)
+    signup(c)
+    c.post("/setup", data=FORM)
+    c.post("/plan/generate")
+    assert "confirm" in c.post("/account/delete", data={"confirm": "wrong"}, follow_redirects=True).text.lower()
+    assert c.post("/account/delete", data={"confirm": "a@example.com"}, follow_redirects=False).status_code == 303
+    assert db.user_by_email("a@example.com") is None and db.for_user(1).get_workouts() == []
+    assert c.get("/", follow_redirects=False).headers["location"] == "/login"
 
 
 def test_marathon_race_week_has_room_for_the_race():

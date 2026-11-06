@@ -1,38 +1,51 @@
 {% extends "base.html" %}{% block body %}
-<h1>Goal &amp; schedule</h1>
-<form method="post" action="/setup" class="card">
-  <label>Name <input name="name" value="{{ p.name if p }}"></label>
-  <label>Units
-    <select name="units"><option value="km" {{ 'selected' if p and p.units=='km' }}>Kilometres</option><option value="mi" {{ 'selected' if p and p.units=='mi' }}>Miles</option></select>
-    <span class="mut sm">(mileage fields below use this unit)</span></label>
-
-  <label>Goal race</label>
-  <div class="row">
-    <select name="goal_preset">
-      {% for k in presets %}<option {{ 'selected' if p and p.goal_label==k }}>{{ k }}</option>{% endfor %}
-      <option value="" {{ 'selected' if p and p.goal_label not in presets }}>Custom distance…</option>
-    </select>
-    <input name="goal_custom" type="number" step="0.1" placeholder="custom distance" style="width:9em">
-    <input name="race_date" type="date" required value="{{ p.race_date if p }}">
+<h1 class="lt">{{ 'Goal & schedule' if p else 'Set your goal' }}</h1>
+<p class="sub">Your coach builds the plan around this. You can change it any time.</p>
+<form method="post" action="/setup">
+<section class="card">
+  <h2>Race</h2>
+  <span class="lab">Distance</span>
+  <div class="chips">
+    {% for k in presets %}<label><input type="radio" name="goal_preset" value="{{ k }}" {{ 'checked' if (p and p.goal_label==k) or (not p and k=='Half marathon') }}><span>{{ k }}</span></label>{% endfor %}
+    <label><input type="radio" name="goal_preset" value="" {{ 'checked' if p and p.goal_label not in presets }}><span>Custom</span></label>
   </div>
-  <label>Target finish time <span class="mut sm">(optional, h:mm:ss)</span> <input name="goal_time" placeholder="1:45:00" value="{% if p and p.goal_time_s %}{{ '%d:%02d:%02d' % (p.goal_time_s//3600, p.goal_time_s%3600//60, p.goal_time_s%60) }}{% endif %}"></label>
+  <label class="f custom"><span class="lab">Custom distance</span><input type="number" name="goal_custom" inputmode="decimal" step="0.1" min="1" placeholder="e.g. 15"></label>
+  <label class="f" style="margin-top:16px"><span class="lab">Race date</span><input type="date" name="race_date" required value="{{ p.race_date if p }}"></label>
+  <label class="f"><span class="lab">Target finish time (optional)</span><input type="text" name="goal_time" inputmode="numeric" placeholder="1:45:00" pattern="[0-9:]*" value="{{ (p.goal_time_s // 3600 ~ ':' ~ '%02d' % (p.goal_time_s % 3600 // 60) ~ ':' ~ '%02d' % (p.goal_time_s % 60)) if p and p.goal_time_s }}"></label>
+</section>
 
-  <label>Current weekly mileage <input name="baseline" type="number" step="0.5" min="0" value="{{ (p.baseline_km / (1.609344 if p.units=='mi' else 1))|round(1) if p else 0 }}" style="width:7em">
-    <span class="mut sm">(used until Strava history is available)</span></label>
-  <label>Experience
-    <select name="experience">{% for e in ['beginner','intermediate','advanced'] %}<option {{ 'selected' if (p.experience if p else 'intermediate')==e }}>{{ e }}</option>{% endfor %}</select></label>
+<section class="card">
+  <h2>You</h2>
+  <span class="lab">Units</span>
+  <div class="seg" style="margin-bottom:16px">
+    <label><input type="radio" name="units" value="km" {{ 'checked' if not p or p.units=='km' }}><span>Kilometres</span></label>
+    <label><input type="radio" name="units" value="mi" {{ 'checked' if p and p.units=='mi' }}><span>Miles</span></label>
+  </div>
+  <span class="lab">Experience</span>
+  <div class="seg" style="margin-bottom:16px">
+    {% for e in ['beginner','intermediate','advanced'] %}<label><input type="radio" name="experience" value="{{ e }}" {{ 'checked' if (p.experience if p else 'intermediate')==e }}><span>{{ e|title }}</span></label>{% endfor %}
+  </div>
+  <label class="f"><span class="lab">Current weekly distance</span><input type="number" name="baseline" inputmode="decimal" step="0.5" min="0" value="{{ (p.baseline_km / (1.609344 if p.units=='mi' else 1))|round(1) if p else 0 }}"></label>
+  <p class="xs mut" style="margin-top:-8px">Used until Strava has your real numbers.</p>
+</section>
 
-  <label>When can you run?</label>
-  <table><tr><th>Day</th><th>Available</th><th>Minutes</th><th>Usual time</th></tr>
+<section class="card flush">
+  <div style="padding:18px 18px 4px"><h2>When can you run?</h2></div>
   {% for d in days %}{% set a = p.availability[d] if p else None %}
-  <tr><td>{{ d|title }}</td>
-    <td><input type="checkbox" name="av_{{ d }}" {{ 'checked' if a and a.available }}></td>
-    <td><input type="number" name="min_{{ d }}" min="0" max="300" step="5" value="{{ a.minutes if a else 45 }}" style="width:6em"></td>
-    <td><input name="time_{{ d }}" placeholder="6:00am" value="{{ a.time if a }}" style="width:7em"></td></tr>
-  {% endfor %}</table>
-  <label>Long-run day <select name="long_run_day">{% for d in days %}<option value="{{ d }}" {{ 'selected' if (p.long_run_day if p else 'sun')==d }}>{{ d|title }}</option>{% endfor %}</select></label>
-  <label>Anything the coach should know? <span class="mut sm">(injuries, hills, treadmill-only days, preferences)</span>
-    <textarea name="notes" rows="3">{{ p.notes if p }}</textarea></label>
-  <div style="margin-top:16px"><button>Save</button></div>
+  <div class="day">
+    <div class="top"><span class="b">{{ {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'}[d] }}</span>
+      <label class="sw"><input type="checkbox" name="av_{{ d }}" {{ 'checked' if (a.available if a else d in ['tue','thu','sat','sun']) }} aria-label="Available {{ d }}"><i></i></label></div>
+    <div class="more">
+      <label><span class="lab">Minutes</span><input type="number" name="min_{{ d }}" inputmode="numeric" min="0" max="300" step="5" value="{{ a.minutes if a else (120 if d=='sun' else 45) }}"></label>
+      <label><span class="lab">Usual time</span><input type="time" name="time_{{ d }}" value="{{ a.time if a else '' }}"></label>
+    </div>
+  </div>{% endfor %}
+</section>
+
+<section class="card">
+  <label class="f"><span class="lab">Long-run day</span><select name="long_run_day">{% for d in days %}<option value="{{ d }}" {{ 'selected' if (p.long_run_day if p else 'sun')==d }}>{{ d|title }}</option>{% endfor %}</select></label>
+  <label class="f" style="margin:0"><span class="lab">Anything your coach should know?</span><textarea name="notes" placeholder="Injuries, hills, treadmill-only days, preferences…">{{ p.notes if p }}</textarea></label>
+</section>
+<button>Save</button>
 </form>
 {% endblock %}

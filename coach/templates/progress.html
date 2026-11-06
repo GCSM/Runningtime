@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block body %}
+<h1 class="lt">Progress</h1>
+{% if pr.stats %}{% set s = pr.stats %}
+<p class="sub">How your training is stacking up against the plan.</p>
+<div class="stats">
+  <div class="stat"><b>{{ s.total_km|dist(units, false) }}<small class="mut" style="font-size:14px"> {{ units }}</small></b><span>Total distance</span></div>
+  <div class="stat"><b>{{ s.completed }}<small class="mut" style="font-size:14px"> / {{ s.scheduled }}</small></b><span>Runs completed</span></div>
+  <div class="stat"><b>{{ (s.adherence_pct ~ '%') if s.adherence_pct is not none else '–' }}</b><span>Consistency</span></div>
+  <div class="stat"><b>{{ s.best_week_km|dist(units, false) }}<small class="mut" style="font-size:14px"> {{ units }}</small></b><span>Best week</span></div>
+</div>
+<section class="card"><h2>Weekly distance</h2>
+  <div class="chart" tabindex="0" aria-label="Weekly distance, actual versus target">
+  {% for w in pr.weeks %}{% set tgt = w.target or w.planned %}
+    <div class="col {{ 'cur' if w.current }}" title="{{ w.week_start|fmt_date('%b %-d') }}: {{ w.actual|dist(units) }} of {{ tgt|dist(units) }}">
+      <div class="bars"><div class="tg" style="height:{{ (100 * tgt / pr.max)|round(1) }}%"></div>
+        {% if w.actual %}<div class="ac" style="height:{{ (100 * w.actual / pr.max)|round(1) }}%"><span class="v">{{ w.actual|dist(units, false) }}</span></div>{% endif %}</div>
+      <div class="x">{{ w.week_start|fmt_date('%-m/%-d') }}</div></div>
+  {% endfor %}</div>
+  <div class="legend"><span><i style="background:var(--acc)"></i>Ran</span><span><i style="border:2px dashed var(--line)"></i>Plan target</span></div>
+</section>
+<script>document.querySelector('.col.cur')?.scrollIntoView({inline:'center',block:'nearest'})</script>
+{% else %}<div class="card empty"><div class="ico">📈</div><p class="mut">Your progress will show up here once you have a plan.</p></div>{% endif %}
+{% endblock %}

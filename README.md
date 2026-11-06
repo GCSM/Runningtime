@@ -1,7 +1,8 @@
 # Running Coach
 
-A self-hosted AI running coach. Tell it your race, your date and when you can run; it builds a periodized
-plan, then **re-plans as you actually train** by reading your runs from Strava.
+A self-hosted, multi-user AI running coach. Tell it your race, your date and when you can run; it builds a periodized
+plan, then **re-plans as you actually train** by reading your runs from Strava. Mobile-first UI (installable on iPhone
+via Safari → Share → Add to Home Screen), with light and dark mode.
 
 ## How it works
 
@@ -34,17 +35,25 @@ docker compose up -d --build
 
 Without Docker: `pip install -r requirements.txt && uvicorn coach.web:create_app --factory`.
 
+### Accounts
+Anyone can sign up with an email and password (passwords are hashed with scrypt; sessions are HttpOnly cookies).
+Every plan, run, and Strava connection is private to its user. On a server others can reach, restrict signups:
+`INVITE_CODE=somesecret` requires a code at signup; `ALLOW_SIGNUPS=false` closes signup once everyone has joined.
+Users can delete their account and all their data from **Me**. Serve over HTTPS (reverse proxy or Tailscale) and set
+`PUBLIC_URL` to the `https://` address so cookies are marked `Secure`.
+
 ### Strava
 1. Create an app at <https://www.strava.com/settings/api>.
-2. Set **Authorization Callback Domain** to the host in `PUBLIC_URL` (`localhost` for local use; your LAN/Tailscale
-   hostname if you reach it from another device).
-3. Put the client id/secret in `.env`, restart, click **Connect Strava**. Scope: `read,activity:read_all`.
+2. Set **Authorization Callback Domain** to the host in `PUBLIC_URL`.
+3. Put the client id/secret in `.env`, restart. Each user then taps **Connect with Strava** under **Me**
+   (scope `read,activity:read_all`) and their tokens are stored separately.
+4. Strava limits a new API app to a small number of connected athletes until you request a higher limit
+   (see your app's page on Strava). Check this before inviting more than a couple of people.
 
 No Strava? The planner still works from your self-reported weekly mileage; you just won't get automatic adaptation.
 
-### Security
-Single user, no accounts. Set `APP_PASSWORD` (HTTP basic auth) if it's reachable by anyone but you. Put it behind
-Tailscale or a reverse proxy with TLS before exposing it to the internet. Your Strava tokens live in the SQLite file in `./data`.
+The server's `ANTHROPIC_API_KEY` is shared by all users, so every plan or review is billed to you. Keep signups
+restricted accordingly.
 
 ## Develop
 ```bash

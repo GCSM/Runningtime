@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% from "_macros.html" import icon %}{% block body %}
+<h1 class="lt">Me</h1>
+<p class="sub">{{ user.name }} · {{ user.email }}</p>
+
+{% if p %}
+<section class="card"><h2>Goal</h2>
+  <div class="b" style="font-size:20px">{{ p.goal_label }}{% if p.goal_time_s %} in {{ p.goal_time_s|hms }}{% endif %}</div>
+  <div class="mut">{{ p.race_date|fmt_date('%A, %B %-d, %Y') }} · {{ d.days_to_race }} days to go</div>
+  <div class="chips" style="margin:14px 0">{% for dy in ['mon','tue','wed','thu','fri','sat','sun'] %}{% set a = p.availability[dy] %}
+    {% if a.available %}<span class="pill" style="font-size:13px;padding:5px 11px">{{ dy|title }}{{ ' ★' if dy == p.long_run_day }} · {{ a.minutes }}m</span>{% endif %}{% endfor %}</div>
+  <a class="btn sec" href="/setup">Edit goal &amp; schedule</a>
+</section>
+{% else %}<a class="btn" href="/setup" style="margin-bottom:14px">Set up your goal</a>{% endif %}
+
+<section class="card"><h2>Strava</h2>
+{% if d.strava_connected %}
+  <p class="b">Connected{% if d.strava_name %} as {{ d.strava_name }}{% endif %}</p>
+  <p class="sm mut" style="margin:2px 0 14px">Last sync: {{ d.last_sync|fmt_ts }}. Runs sync automatically.</p>
+  <div class="row"><form method="post" action="/sync" data-busy="Syncing with Strava…" class="grow"><button class="sec">Sync now</button></form>
+  <form method="post" action="/strava/disconnect" class="grow"><button class="danger">Disconnect</button></form></div>
+{% elif settings.strava_configured %}
+  <p class="sm mut" style="margin-bottom:14px">Connect Strava so your coach can compare what you planned with what you ran, and adjust.</p>
+  <a class="btn strava" href="/strava/connect">Connect with Strava</a>
+{% else %}<p class="sm mut">Strava isn’t configured on this server. The admin needs to set <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_CLIENT_SECRET</code>.</p>{% endif %}
+</section>
+
+<section class="card"><h2>Account</h2>
+  <form method="post" action="/logout"><button class="sec">Sign out</button></form>
+  <details style="margin-top:16px"><summary class="sm b" style="color:var(--bad)">Delete account…</summary>
+    <form method="post" action="/account/delete" class="stack" style="margin-top:12px" onsubmit="return confirm('Delete your account and all training data? This cannot be undone.')">
+      <p class="sm mut">This permanently deletes your plan, synced runs and Strava connection. Type your email to confirm.</p>
+      <input type="email" name="confirm" placeholder="{{ user.email }}" autocapitalize="none" required><button class="danger">Delete everything</button></form></details>
+</section>
+{% endblock %}

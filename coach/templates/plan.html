@@ -1,12 +1,19 @@
-{% extends "base.html" %}{% block body %}
-<h1>Full plan</h1>
-{% for wk in weeks %}
-<div class="card">
-  <h2>Week of {{ wk.week_start|dayname }} <span class="mut sm">{{ wk.phase }}{% if wk.recovery %} · recovery{% endif %}{% if wk.target_km %} · target {{ wk.target_km|dist(units) }}{% endif %}</span></h2>
-  <table>{% for w in wk.workouts %}
-    <tr><td style="width:7em">{{ w.date|dayname }}</td><td><b>{{ w.title }}</b> <span class="mut sm">{{ w.type }}</span><div class="sm mut">{{ w.description }}{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}</div></td>
-    <td style="text-align:right;white-space:nowrap">{{ w.distance_km|dist(units) }}</td><td><span class="badge {{ w.status }}">{{ w.status }}</span></td></tr>
-  {% endfor %}</table>
+{% extends "base.html" %}{% from "_macros.html" import icon, workout_row %}{% block body %}
+<h1 class="lt">Plan</h1>
+{% if weeks %}<p class="sub">Tap a run for details.</p>
+<div class="card flush">
+{% for wk in weeks %}{% set cur = wk.workouts and wk.week_start <= today and (wk.workouts|last).date >= today %}
+<details class="week {{ 'cur' if cur }}" {{ 'open' if cur }}>
+  <summary>
+    <div class="grow"><div class="b">Week of {{ wk.week_start|fmt_date('%b %-d') }}</div>
+      <div class="xs"><span class="pill">{{ wk.phase or 'plan' }}{{ ' · recovery' if wk.recovery }}</span></div></div>
+    <div class="right"><div class="b">{{ wk.planned_km|dist(units) }}</div><div class="xs mut">{{ wk.workouts|length }} runs</div></div>{{ icon('chev') }}
+  </summary>
+  {% for w in wk.workouts %}{{ workout_row(w, units, today) }}{% endfor %}
+</details>
+{% endfor %}
 </div>
-{% else %}<p class="mut">No plan yet. <a href="/">Generate one from the dashboard.</a></p>{% endfor %}
+{% else %}
+<div class="card empty"><div class="ico">🗓️</div><p class="mut">No plan yet.</p><p style="margin-top:14px"><a class="btn" href="/">Go to Today to generate one</a></p></div>
+{% endif %}
 {% endblock %}

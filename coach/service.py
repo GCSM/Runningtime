@@ -11,6 +11,8 @@ from .models import DAYS, Profile
 from .plancheck import sanitize
 from .skeleton import DEFAULT_EASY_PACE_S_KM, Week, build_skeleton, min_recommended_weeks, monday
 
+_LOCKS: dict[tuple, threading.Lock] = {}
+_LOCKS_GUARD = threading.Lock()
 HISTORY_DAYS = 90
 FIX_RETRY_RATIO = 0.25
 
@@ -23,7 +25,8 @@ class CoachService:
     def __init__(self, db: DB, settings: Settings, coach, strava, clock=None):
         self.db, self.settings, self.coach, self.strava = db, settings, coach, strava
         self.today = clock or settings.today
-        self._lock = threading.Lock()  # one LLM/sync operation at a time
+        with _LOCKS_GUARD:  # one LLM/sync operation at a time *per user*
+            self._lock = _LOCKS.setdefault((db.path, db.uid), threading.Lock())
 
     # ---- Strava ----------------------------------------------------------
     def sync(self) -> int:
@@ -203,7 +206,7 @@ class CoachService:
         ):
             self.review(sync=False)
 
-    # ---- dashboard -------------------------------------------------------
+    # ---- views -----------------------------------------------------------
     def dashboard(self) -> dict:
         today = self.today()
         p = self.db.get_profile()
@@ -214,19 +217,55 @@ class CoachService:
             return data
         data["days_to_race"] = (p.race_date - today).days
         ws = monday(today)
-        data["week_workouts"] = self.db.get_workouts(ws, ws + timedelta(days=6))
-        weeks = {w["week_start"]: w for w in self.db.get_weeks()}
-        data["week"] = weeks.get(ws.isoformat())
-        data["week_actual_km"] = round(adherence.weekly_km(self.db.activities_since(ws)).get(ws, 0.0), 1)
+        by_date = {w["date"]: w for w in self.db.get_workouts(ws, ws + timedelta(days=6))}
+        data["strip"] = [
+            {"date": (ws + timedelta(days=i)), "label": DAYS[i][0].upper(), "workout": by_date.get((ws + timedelta(days=i)).isoformat()),
+             "is_today": ws + timedelta(days=i) == today}
+            for i in range(7)
+        ]
+        data["today_workout"] = by_date.get(today.isoformat())
+        data["week_workouts"] = list(by_date.values())
+        week = {w["week_start"]: w for w in self.db.get_weeks()}.get(ws.isoformat())
+        actual = round(adherence.weekly_km(self.db.activities_since(ws)).get(ws, 0.0), 1)
+        data["week"], data["week_actual_km"] = week, actual
+        data["week_pct"] = min(100, round(100 * actual / week["target_km"])) if week and week["target_km"] else 0
         data["has_plan"] = bool(self.db.get_workouts())
-        data["next_workout"] = next((w for w in self.db.get_workouts(today) if w["status"] == "planned"), None)
+        data["next_workout"] = next((w for w in self.db.get_workouts(today + timedelta(days=1)) if w["status"] == "planned"), None)
         return data
 
     def full_plan(self) -> list[dict]:
         weeks = {w["week_start"]: {**w, "workouts": []} for w in self.db.get_weeks()}
         for w in self.db.get_workouts():
-            weeks.setdefault(w["week_start"], {"week_start": w["week_start"], "phase": "", "target_km": None, "workouts": []})["workouts"].append(w)
-        return [weeks[k] for k in sorted(weeks)]
+            weeks.setdefault(w["week_start"], {"week_start": w["week_start"], "phase": "", "target_km": None, "recovery": 0, "workouts": []})["workouts"].append(w)
+        out = [weeks[k] for k in sorted(weeks)]
+        for wk in out:
+            wk["planned_km"] = round(sum(w["distance_km"] or 0 for w in wk["workouts"]), 1)
+        return out
+
+    def progress(self) -> dict:
+        """Weekly planned vs. actual km across the plan, plus headline stats."""
+        today = self.today()
+        plan = self.full_plan()
+        if not plan:
+            return {"weeks": [], "stats": None}
+        first = date.fromisoformat(plan[0]["week_start"])
+        totals = adherence.weekly_km(self.db.activities_since(first))
+        weeks = [
+            {"week_start": wk["week_start"], "planned": wk["planned_km"], "target": wk["target_km"],
+             "actual": round(totals.get(date.fromisoformat(wk["week_start"]), 0.0), 1),
+             "current": wk["week_start"] == monday(today).isoformat(),
+             "past": date.fromisoformat(wk["week_start"]) < monday(today)}
+            for wk in plan
+        ]
+        ws = [w for w in self.db.get_workouts(end=today) if w["status"] in ("completed", "partial", "missed")]
+        done = [w for w in ws if w["status"] != "missed"]
+        stats = {
+            "total_km": round(sum(w["actual"] for w in weeks), 1),
+            "completed": len([w for w in ws if w["status"] == "completed"]), "scheduled": len(ws),
+            "adherence_pct": round(100 * len(done) / len(ws)) if ws else None,
+            "best_week_km": max((w["actual"] for w in weeks), default=0),
+        }
+        return {"weeks": weeks, "stats": stats, "max": max([max(w["actual"], w["target"] or w["planned"]) for w in weeks] + [1])}
 
 
 def _fmt_hms(s: int) -> str:
