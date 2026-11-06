@@ -198,3 +198,35 @@ def test_athlete_text_explains_source_and_limit():
     assert "compressed" in _outlook(weeks_to_race=4, min_weeks=6).athlete_text("5K", "intermediate")
     assert "compressed" not in _outlook(weeks_to_race=12).athlete_text("5K", "intermediate")
     assert math.isclose(_outlook().to_dict()["peak_km"], 37.0)
+
+
+# ---- readiness: a marathon plan that can't prepare you must say so -----------------------------------------------
+def _mk_outlook(goal_km=42.195, exp="intermediate", weeks=20, mins=240, long_min=90, days=4, base=25):
+    from datetime import date, timedelta
+    from coach.skeleton import build_skeleton_info
+    t = date(2026, 11, 2)
+    return build_skeleton_info(plan_start=t, today=t, race_date=t + timedelta(weeks=weeks), goal_km=goal_km, baseline_km=base, experience=exp,
+                               weekly_minutes=mins, long_day_minutes=long_min, easy_pace_s_km=360, run_days=days)[1]
+
+
+def test_short_time_marathon_is_flagged_with_the_fix():
+    o = _mk_outlook()                                   # 4 days, 240 min/week, 90-minute long-run day: a 40 km peak and a 15 km long run
+    assert o.peak_km < 42 and o.peak_long_km <= 15
+    text = " ".join(o.warnings)
+    assert "150+ minutes" in text and "310 minutes a week" in text and "won't fully prepare" in text
+    assert "long-run day has 90 minutes" in text
+
+
+def test_a_properly_scheduled_marathon_has_no_warnings():
+    o = _mk_outlook(mins=420, long_min=180, days=5, weeks=24, base=30)
+    assert o.peak_long_km >= 25 and o.peak_km >= 60 and o.warnings == []
+
+
+def test_too_few_weeks_is_flagged_even_with_plenty_of_time():
+    o = _mk_outlook(weeks=12, mins=400, long_min=200, base=20)
+    assert o.warnings and "12 weeks" in " ".join(o.warnings) and "later race" in " ".join(o.warnings)
+
+
+def test_shorter_goals_with_sensible_schedules_are_not_flagged():
+    for goal, exp, mins, lm in [(5.0, "beginner", 150, 45), (10.0, "intermediate", 240, 75), (21.0975, "intermediate", 300, 120)]:
+        assert _mk_outlook(goal, exp, weeks=14, mins=mins, long_min=lm, base=20).warnings == [], goal

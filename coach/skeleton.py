@@ -107,11 +107,16 @@ def build_skeleton_info(
         limit = "time" if time_cap < target - 0.5 else "goal"
     else:
         limit = "ramp"
+    peak_long = max((w.long_run_km for w in training), default=0.0)
+    wtr = max(0, (race_date - today).days // 7)
     outlook = VolumeOutlook(
         baseline_km=baseline_km, baseline_source=baseline_source, start_km=weeks[0].target_km if weeks else cur, peak_km=peak,
         ideal_low=low, ideal_target=target, ideal_high=high, limit=limit, time_cap_km=time_cap,
-        weeks_to_race=max(0, (race_date - today).days // 7), min_weeks=K.min_weeks(goal_km, experience),
+        weeks_to_race=wtr, min_weeks=K.min_weeks(goal_km, experience), peak_long_km=peak_long,
     )
+    outlook.warnings = K.readiness_warnings(
+        goal_km, experience, peak_km=peak, peak_long_km=peak_long, limit=limit, time_cap_km=time_cap, long_day_minutes=long_day_minutes,
+        weekly_minutes=weekly_minutes, pace_s_km=pace_s, weeks_to_race=wtr, min_weeks_=outlook.min_weeks, ideal_low=low)
     return weeks, outlook
 
 

@@ -39,7 +39,7 @@
 </section>
 
 <section class="card flush">
-  <div style="padding:18px 18px 4px"><h2>When can you run?</h2></div>
+  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Your plan can only be as big as the time you give it. Marathon: 150+ minutes on your long-run day and about 5 hours a week in total. Half marathon: 100+ minutes and 4 hours a week.</p></div>
   {% for d in days %}{% set a = p.availability[d] if p else None %}
   <div class="day">
     <div class="top"><span class="b">{{ {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'}[d] }}</span>

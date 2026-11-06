@@ -32,6 +32,13 @@
 </section>
 {% endif %}
 
+{% if d.readiness_warnings %}
+<section class="card rise" role="alert" style="border:2px solid var(--warn)">
+  <h2 style="color:var(--warn)">This plan won’t fully prepare you</h2>
+  {% for t in d.readiness_warnings %}<p class="sm" style="margin-top:8px">{{ t }}</p>{% endfor %}
+  <a class="btn sec sm" href="/setup" style="display:flex;align-items:center;justify-content:center;margin-top:14px">Adjust goal &amp; schedule</a>
+</section>
+{% endif %}
 {% if not d.has_plan %}
   {% if d.strava_ready and not d.strava_connected and not d.strava_skipped %}
   <div class="card empty rise">

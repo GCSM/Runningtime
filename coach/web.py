@@ -416,6 +416,9 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back("/setup", err=f"Check your inputs: {e}")
         had_plan = bool(svc.db.get_workouts())
         svc.db.save_profile(p)
+        warn = svc.readiness_warnings()
+        if warn:
+            return back("/", err=f"Saved, but heads-up: {warn[0]}")
         return back("/", "Saved. Tap “Review & adjust” to re-plan around the changes." if had_plan else "Saved. One last step before your plan.")
 
     # ---- actions ---------------------------------------------------------

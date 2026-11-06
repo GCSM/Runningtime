@@ -9,6 +9,7 @@
     <div class="xs mut grow right">Published {{ outlook.level }} {{ outlook.goal }} plans peak at about {{ outlook.ideal_low|dist(units, false) }}–{{ outlook.ideal_high|dist(units, false) }} {{ units }}</div>
   </div>
   <p class="sm mut" style="margin-top:12px">{{ outlook.text }}</p>
+  {% for t in outlook.warnings or [] %}<p class="sm" style="margin-top:10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">{{ t }}</p>{% endfor %}
   {% if outlook.paces_s %}
   <div style="margin-top:14px"><div class="lab">Training paces <span style="text-transform:none;letter-spacing:0;font-weight:500">({{ outlook.paces_basis }})</span></div>
     <table class="sm" style="width:100%">{% for k, v in [('Easy', outlook.paces_s.easy), ('Marathon', outlook.paces_s.marathon), ('Threshold', outlook.paces_s.threshold), ('Interval', outlook.paces_s.interval), ('Repetition', outlook.paces_s.repetition)] %}

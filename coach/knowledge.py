@@ -6,7 +6,7 @@ the network or the language model, so it is cheap to test: tests/test_knowledge.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 LEVELS = ("beginner", "intermediate", "advanced")
 LEVEL_HELP = {  # McMillan-style definitions; shown on the setup form
@@ -299,6 +299,42 @@ def workout_menu(goal_km: float, level: str) -> dict[str, list[str]]:
     return {"base": base, "build": build, "peak": peak, "taper": taper, "race": taper}
 
 
+# ---- Is the plan we can build actually enough for the goal? ------------------------------------------------------
+MIN_PEAK_LONG_KM = {5.0: 5.0, 10.0: 8.0, 21.0975: 13.0, 42.195: 25.0}   # shortest peak long run that still prepares for the event
+MIN_VOLUME_SHARE = 0.85                                                   # peak weekly km below 85% of the published low end is flagged
+
+
+def readiness_warnings(goal_km: float, level: str, *, peak_km: float, peak_long_km: float, limit: str, time_cap_km: float,
+                       long_day_minutes: int, weekly_minutes: int, pace_s_km: float, weeks_to_race: int, min_weeks_: int,
+                       ideal_low: float) -> list[str]:
+    """Plain-language reasons the plan we can build would under-prepare the athlete, each with what to change."""
+    out: list[str] = []
+    goal = goal_name(goal_km)
+    need_long = MIN_PEAK_LONG_KM[_bucket(goal_km)]
+    if peak_long_km < need_long:
+        mins = int(math.ceil(need_long * pace_s_km / 60 / 5) * 5)
+        if long_day_minutes and long_day_minutes < mins:
+            out.append(f"Your longest run would only reach {peak_long_km:.0f} km because your long-run day has {long_day_minutes} minutes. "
+                       f"A {goal} needs a long run of at least {need_long:.0f} km, which takes about {mins} minutes at an easy pace. "
+                       f"Add time to your long-run day (aim for {mins}+ minutes) in Goal & schedule.")
+        else:
+            out.append(f"Your longest run would only reach {peak_long_km:.0f} km; a {goal} plan needs at least {need_long:.0f} km. "
+                       f"There isn't enough time or build-up before the race to get there safely.")
+    if peak_km < ideal_low * MIN_VOLUME_SHARE:
+        if limit == "time":
+            mins = int(math.ceil(ideal_low * MIN_VOLUME_SHARE * pace_s_km / 60 / 10) * 10)
+            out.append(f"Your running time ({weekly_minutes} min/week, about {time_cap_km:.0f} km) caps the build at {peak_km:.0f} km/week; "
+                       f"published {level} {goal} plans peak around {ideal_low:.0f}+ km. You'd need roughly {mins} minutes a week "
+                       f"(more days or longer runs) to train properly.")
+        else:
+            out.append(f"There are only {weeks_to_race} weeks to the race, so the build tops out at {peak_km:.0f} km/week "
+                       f"(published {level} {goal} plans peak around {ideal_low:.0f}+). {min_weeks_}+ weeks is usual; consider a later race.")
+    if out:
+        out.append(f"This is the most your current schedule supports, and it won't fully prepare you for a {goal}. "
+                   f"Fix the points above for a proper build.")
+    return out
+
+
 # ---- Volume outlook: what the athlete is told about their weekly kilometres ---------------------------------------
 @dataclass
 class VolumeOutlook:
@@ -313,6 +349,8 @@ class VolumeOutlook:
     time_cap_km: float
     weeks_to_race: int
     min_weeks: int
+    peak_long_km: float = 0.0
+    warnings: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in self.__dict__.items()}

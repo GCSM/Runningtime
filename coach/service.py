@@ -109,6 +109,14 @@ class CoachService(ActionsMixin, ProgressMixin):
             return K.paces_from_easy(easy_est), "recent runs", easy_est
         return None, "none: prescribe by effort (RPE / talk test)", DEFAULT_EASY_PACE_S_KM
 
+    def readiness_warnings(self) -> list[str]:
+        """Would the plan we can build under-prepare this athlete for their goal? Computed from the skeleton, no model call."""
+        p = self.db.get_profile()
+        if not p or p.race_date < self.today() + timedelta(days=3):
+            return []
+        acts = self.db.activities_since(self.today() - timedelta(days=HISTORY_DAYS))
+        return self._skeleton(p, acts, self.today()).outlook.warnings
+
     def _skeleton(self, p: Profile, acts: list[dict], plan_start: date, *, trust_actuals: bool = False) -> "PlanInputs":
         today = self.today()
         base_km, source = self._baseline(p, acts, trust_actuals=trust_actuals)
@@ -371,6 +379,7 @@ class CoachService(ActionsMixin, ProgressMixin):
         if not p:
             return data
         data["days_to_race"] = (p.race_date - today).days
+        data["readiness_warnings"] = self.readiness_warnings()
         ws = monday(today)
         by_date = {w["date"]: w for w in self.db.get_workouts(ws, ws + timedelta(days=6))}
         data["strip"] = [
