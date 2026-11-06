@@ -39,7 +39,7 @@
 </section>
 
 <section class="card flush">
-  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Pick the longest run you could fit each day. Your plan can only be as big as the time you give it: for a marathon make your long-run day “Extra long” (150 min) and give most other days Medium or Long; for a half marathon, “Long” (90 min) on your long-run day is enough.</p></div>
+  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Pick the longest run you could fit each day. Your plan can only be as big as the time you give it: for a marathon make your long-run day “Extra long” (150 min) or “Max long” (210 min, for slower paces) and give most other days Medium or Long; for a half marathon, “Long” (90 min) on your long-run day is enough.</p></div>
   {% for d in days %}{% set a = p.availability[d] if p else None %}
   <div class="day">
     <div class="top"><span class="b">{{ {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'}[d] }}</span>
