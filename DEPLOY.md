@@ -35,7 +35,7 @@ If the app is ever reachable beyond your LAN, require a code to sign up: `REQUIR
 `INVITE_CODE=yourword` picks your own (or edit `INVITE_CODE` in the env file later). Remember every account's plans and
 reviews are billed to your Anthropic key.
 
-To change anything afterwards: `nano /etc/running-coach.env && systemctl restart running-coach`.
+To change settings later, use `deploy/reconfigure.sh` (see below).
 
 | Variable | What it does |
 |---|---|
@@ -50,6 +50,20 @@ To change anything afterwards: `nano /etc/running-coach.env && systemctl restart
 > defaults to `http://<container-ip>:8000`, which is fine on a trusted home network (passwords are not encrypted in transit).
 
 Logs: `journalctl -u running-coach -f`
+
+## Changing settings later (`reconfigure.sh`)
+For an install that's already running. It shows your current settings (secrets masked), lets you change any of them,
+backs up the old config, restarts the service, and **rolls back automatically** if the app isn't healthy afterwards.
+```bash
+cd /opt/running-coach
+bash deploy/reconfigure.sh                          # walk through every setting; Enter keeps the current value
+bash deploy/reconfigure.sh --show                   # just print the current settings
+bash deploy/reconfigure.sh COACH_EFFORT=low COACH_MODEL=claude-haiku-5-5   # change specific settings, no prompts
+bash deploy/reconfigure.sh --unset INVITE_CODE      # remove a setting
+```
+Values are validated first (effort, URL scheme, timezone, true/false, numbers), and a bad value changes nothing. In the
+walkthrough, type `-` to clear a value, and `new` at the invite-code prompt to generate a code. The 5 most recent
+backups are kept as `/etc/running-coach.env.bak.<timestamp>`.
 
 ## 3. HTTPS access (optional; pick one)
 - **Reverse proxy** (Caddy / Nginx Proxy Manager / Traefik) in another container: see `deploy/Caddyfile.example`.
@@ -74,3 +88,4 @@ sqlite3 /var/lib/running-coach/coach.db ".backup '/root/coach-$(date +%F).db'"
 ```bash
 cd /opt/running-coach && git pull && bash deploy/install.sh
 ```
+`install.sh` updates the code and dependencies and keeps your config; `reconfigure.sh` changes the config only.

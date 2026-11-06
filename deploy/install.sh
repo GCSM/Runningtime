@@ -22,21 +22,7 @@ PORT=8000
 CONFIGURE_ONLY=0
 [ "${1:-}" = "--configure-only" ] && CONFIGURE_ONLY=1
 
-set_var() {  # set_var KEY VALUE : replace or append KEY=VALUE in the env file
-  local k="$1" v="$2"
-  { grep -v "^${k}=" "$ENV_FILE" 2>/dev/null || true; printf '%s=%s\n' "$k" "$v"; } > "$ENV_FILE.tmp"
-  mv "$ENV_FILE.tmp" "$ENV_FILE"
-}
-
-detect_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
-
-detect_tz() {
-  local tz=""
-  tz="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
-  [ -n "$tz" ] || tz="$(cat /etc/timezone 2>/dev/null || true)"
-  [ -n "$tz" ] || tz="$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##' || true)"
-  echo "${tz:-UTC}"
-}
+. "$APP_DIR/deploy/lib.sh"
 
 configure() {
   cp "$APP_DIR/.env.example" "$ENV_FILE"
@@ -52,7 +38,7 @@ configure() {
 
   invite="${INVITE_CODE:-}"
   if [ -z "$invite" ] && [ "${REQUIRE_INVITE:-0}" = 1 ]; then
-    invite="$(head -c 32 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8)"
+    invite="$(random_code)"
   fi
 
   set_var ANTHROPIC_API_KEY "$key"
