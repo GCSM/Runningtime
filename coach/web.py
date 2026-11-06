@@ -274,7 +274,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def plan(request: Request):
         svc = request.state.svc
         p = svc.db.get_profile()
-        return render(request, "plan.html", weeks=svc.full_plan(), units=p.units if p else "km", today=svc.today().isoformat(), has_profile=bool(p))
+        return render(request, "plan.html", weeks=svc.full_plan(), units=p.units if p else "km", today=svc.today().isoformat(),
+                      has_profile=bool(p), outlook=svc.db.kv_get("volume_outlook"))
 
     @app.get("/progress")
     def progress(request: Request):
@@ -300,7 +301,9 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
 
     @app.get("/setup")
     def setup(request: Request):
-        return render(request, "setup.html", p=request.state.svc.db.get_profile(), days=DAYS, presets=PRESETS)
+        from . import knowledge as K
+
+        return render(request, "setup.html", p=request.state.svc.db.get_profile(), days=DAYS, presets=PRESETS, level_help=K.LEVEL_HELP)
 
     @app.post("/setup")
     async def setup_save(request: Request):
@@ -316,9 +319,15 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
                 d: DayAvail(available=f.get(f"av_{d}") == "on", minutes=int(f.get(f"min_{d}") or 0), time=str(f.get(f"time_{d}") or ""))
                 for d in DAYS
             }
+            raw_base = str(f.get("baseline", "")).strip()
+            if raw_base == "":
+                raise ValueError("tell us roughly how much you run in a typical week right now (enter 0 if you're just starting)")
+            if float(raw_base) < 0:
+                raise ValueError("weekly distance can't be negative")
+            baseline_km = float(raw_base) * to_km
             p = Profile(
                 name=request.state.user["name"], goal_label=label, goal_km=goal_km, race_date=date.fromisoformat(str(f.get("race_date"))),
-                goal_time_s=parse_hms(str(f.get("goal_time", ""))), baseline_km=float(f.get("baseline") or 0) * to_km,
+                goal_time_s=parse_hms(str(f.get("goal_time", ""))), baseline_km=baseline_km,
                 experience=f.get("experience", "intermediate"), availability=avail, long_run_day=str(f.get("long_run_day", "sun")),
                 notes=str(f.get("notes", "")), units=units,
             )

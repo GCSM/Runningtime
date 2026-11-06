@@ -4,17 +4,34 @@ import threading
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from dataclasses import dataclass
+
 from . import adherence
+from . import knowledge as K
 from .config import Settings
 from .db import DB
 from .models import DAYS, Profile
-from .plancheck import sanitize
-from .skeleton import DEFAULT_EASY_PACE_S_KM, Week, build_skeleton, min_recommended_weeks, monday
+from .plancheck import mentions_pain, sanitize
+from .skeleton import DEFAULT_EASY_PACE_S_KM, VolumeOutlook, Week, build_skeleton_info, monday
 
 _LOCKS: dict[tuple, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 HISTORY_DAYS = 90
 FIX_RETRY_RATIO = 0.25
+
+
+@dataclass
+class PlanInputs:
+    weeks: list[Week]
+    pace: float                       # easy pace (s/km) used for time budgets
+    outlook: VolumeOutlook
+    paces_raw: dict[str, tuple[float, float]] | None   # training paces in s/km (fast end, slow end), or None if unknown
+    paces_basis: str
+    run_days: int
+
+    @property
+    def paces(self) -> dict[str, str] | None:
+        return K.pace_text(self.paces_raw) if self.paces_raw else None
 
 
 class UserError(Exception):
@@ -58,53 +75,105 @@ class CoachService:
             raise UserError("The race date is too close (or past). Update your goal.")
         return p
 
-    def _skeleton(self, p: Profile, acts: list[dict], plan_start: date) -> tuple[list[Week], float]:
+    def _baseline(self, p: Profile, acts: list[dict], *, trust_actuals: bool) -> tuple[float, str]:
+        """How much the athlete currently runs per week, and where that number came from. Never silently 0."""
         today = self.today()
-        pace = adherence.easy_pace_s_km(acts, today)
-        base = adherence.recent_baseline_km(acts, today)
-        weeks = build_skeleton(
-            plan_start=plan_start, today=today, race_date=p.race_date, goal_km=p.goal_km,
-            baseline_km=p.baseline_km if base is None else base, experience=p.experience,
-            weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes, easy_pace_s_km=pace,
-        )
-        return weeks, pace or DEFAULT_EASY_PACE_S_KM
+        real = adherence.recent_baseline_km(acts, today)            # mean of last 4 complete weeks; None if no history at all
+        if real is not None and (real >= 5 or trust_actuals):
+            return real, "strava"
+        last = max((date.fromisoformat(a["date"]) for a in acts), default=None)
+        days_off = (today - last).days if last else 0
+        if p.baseline_km > 0:
+            if real is not None and days_off >= 10:                 # stated volume, but a real layoff since
+                return p.baseline_km * K.restart_fraction(days_off), "restart"
+            return p.baseline_km, "stated"
+        if p.experience == "beginner":
+            return 0.0, "stated"                                     # "just starting": the skeleton floors this at 8 km
+        if real is not None:
+            return max(K.assumed_baseline_km(p.experience) * 0.5, K.MIN_BASE_KM), "restart"
+        return K.assumed_baseline_km(p.experience), "assumed"       # told to the athlete in the plan summary
 
-    def _context(self, p: Profile, weeks: list[Week], acts: list[dict], pace: float, plan_start: date) -> dict:
+    def _paces(self, p: Profile, acts: list[dict]) -> tuple[dict[str, tuple[float, float]] | None, str, float]:
+        """Training paces (computed in code, not by the model), where they came from, and an easy pace for time budgets."""
+        today = self.today()
+        easy_est = adherence.easy_pace_s_km(acts, today)
+        if p.goal_time_s:
+            paces = K.training_paces(K.vdot(p.goal_km * 1000, p.goal_time_s))
+            return paces, "goal time (Daniels VDOT)", sum(paces["easy"]) / 2
+        if easy_est:
+            return K.paces_from_easy(easy_est), "recent runs", easy_est
+        return None, "none: prescribe by effort (RPE / talk test)", DEFAULT_EASY_PACE_S_KM
+
+    def _skeleton(self, p: Profile, acts: list[dict], plan_start: date, *, trust_actuals: bool = False) -> "PlanInputs":
+        today = self.today()
+        base_km, source = self._baseline(p, acts, trust_actuals=trust_actuals)
+        paces, basis, pace = self._paces(p, acts)
+        run_days = sum(1 for a in p.availability.values() if a.available)
+        weeks, outlook = build_skeleton_info(
+            plan_start=plan_start, today=today, race_date=p.race_date, goal_km=p.goal_km, baseline_km=base_km,
+            experience=p.experience, weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes,
+            easy_pace_s_km=pace, run_days=run_days, baseline_source=source,
+        )
+        return PlanInputs(weeks, pace, outlook, paces, basis, run_days)
+
+    def _context(self, p: Profile, inp: PlanInputs, acts: list[dict], plan_start: date, note: str = "") -> dict:
         today = self.today()
         totals = adherence.weekly_km(acts)
+        weeks, pace, o = inp.weeks, inp.pace, inp.outlook
         done_runs = {w["date"] for w in self.db.get_workouts(today, today) if w["status"] in ("completed", "partial")}
         blocked = sorted(done_runs | ({today.isoformat()} if any(a["date"] == today.isoformat() for a in acts) else set()))
+        last_run = max((date.fromisoformat(a["date"]) for a in acts), default=None)
+        days_off = (today - last_run).days if last_run else None
+        phases = {w.phase for w in weeks} | ({"taper"} if any(w.phase == "race" for w in weeks) else set())
+        menu = K.workout_menu(p.goal_km, p.experience)
         ctx = {
             "today": today.isoformat(), "today_weekday": DAYS[today.weekday()],
             "earliest_workout_date": today.isoformat(), "blocked_dates": blocked,
             "athlete": {
-                "name": p.name, "experience": p.experience, "notes": p.notes,
+                "name": p.name, "level": p.experience, "notes": p.notes,
                 "goal": p.goal_label, "goal_km": p.goal_km, "race_date": p.race_date.isoformat(),
                 "goal_time": _fmt_hms(p.goal_time_s) if p.goal_time_s else None,
-                "goal_pace_s_per_km": round(p.goal_pace_s_per_km) if p.goal_pace_s_per_km else None,
                 "weeks_until_race": (p.race_date - today).days // 7,
             },
             "availability": {d: p.availability[d].model_dump() for d in DAYS if d in p.availability},
             "long_run_day": p.long_run_day,
+            "run_days_available": inp.run_days,
+            "recommended_runs_per_week_for_this_goal_and_level": K.recommended_runs_per_week(p.goal_km, p.experience),
             "recent_training": {
                 "weekly_km_last_6_complete_weeks": [round(totals.get(monday(today) - timedelta(weeks=i), 0.0), 1) for i in range(6, 0, -1)],
                 "easy_pace_s_per_km_estimate": round(pace),
                 "have_strava_history": bool(acts),
+                "days_since_last_run": days_off,
             },
+            "volume_plan": {
+                **o.to_dict(),
+                "meaning": "start_km/peak_km are the weekly distances the weekly skeleton below builds to; baseline_source says how "
+                           "the starting point was determined. Do not under-deliver the weekly target_km.",
+            },
+            "training_paces_per_km": inp.paces,
+            "training_paces_basis": inp.paces_basis,
+            "workout_menu_by_phase": {ph: menu[ph] for ph in menu if ph in phases},
+            "injury_or_pain_mentioned_in_check_in": mentions_pain(note),
             "skeleton": [
                 {**{k: v for k, v in w.to_row().items() if k != "week_start"}, "week_start": w.week_start.isoformat(),
+                 "max_quality_sessions": K.quality_limit(p.experience, w.phase, w.recovery, inp.run_days),
                  "already_done_km": round(totals.get(w.week_start, 0.0), 1) if w.week_start == monday(today) else 0.0}
                 for w in weeks
             ],
         }
+        if days_off is not None and days_off >= 10 and acts:
+            ctx["layoff"] = {"days_since_last_run": days_off, "suggested_restart_share_of_previous_volume": K.restart_fraction(days_off)}
         return ctx
 
-    def _run_coach(self, p, weeks, acts, pace, ctx, mode) -> tuple[list[dict], str]:
+    def _run_coach(self, p: Profile, inp: PlanInputs, acts: list[dict], ctx: dict, mode: str, note: str = "") -> tuple[list[dict], str]:
         today = self.today()
         totals = adherence.weekly_km(acts)
+        longest = max((a["distance_m"] / 1000 for a in acts if a["date"] >= (today - timedelta(days=28)).isoformat()), default=0.0)
         kwargs = dict(
-            profile=p, weeks=weeks, today=today, blocked_dates=set(ctx["blocked_dates"]),
-            done_km_by_week={monday(today): totals.get(monday(today), 0.0)}, pace_s_km=pace,
+            profile=p, weeks=inp.weeks, today=today, blocked_dates=set(ctx["blocked_dates"]),
+            done_km_by_week={monday(today): totals.get(monday(today), 0.0)}, pace_s_km=inp.pace,
+            level=p.experience, longest_recent_km=longest,
+            suppress_quality_until=(today + timedelta(days=7)) if mentions_pain(note) else None,
         )
         out = self.coach.plan(ctx, mode=mode)
         workouts, notes = sanitize(out["workouts"], **kwargs)
@@ -113,9 +182,12 @@ class CoachService:
             workouts, notes = sanitize(out["workouts"], **kwargs)
         if not workouts:
             raise UserError("The coach returned no usable workouts. Check your availability and try again.")
-        self.db.replace_plan_from(self.today(), [w.to_row() for w in weeks if w.week_start >= monday(today)], workouts)
+        self.db.replace_plan_from(self.today(), [w.to_row() for w in inp.weeks if w.week_start >= monday(today)], workouts)
         self.refresh_statuses()
-        return workouts, out["summary"]
+        text = inp.outlook.athlete_text(K.goal_name(p.goal_km), p.experience)
+        self.db.kv_set("volume_outlook", {**inp.outlook.to_dict(), "text": text, "level": p.experience,
+                                          "goal": K.goal_name(p.goal_km), "paces_s": inp.paces_raw, "paces_basis": inp.paces_basis})
+        return workouts, out["summary"].rstrip() + "\n\n" + text
 
     def generate_plan(self) -> str:
         with self._lock:
@@ -124,12 +196,9 @@ class CoachService:
             acts = self.db.activities_since(today - timedelta(days=HISTORY_DAYS))
             plan_start = monday(today)
             self.db.kv_set("plan_start", plan_start.isoformat())
-            weeks, pace = self._skeleton(p, acts, plan_start)
-            ctx = self._context(p, weeks, acts, pace, plan_start)
-            _, summary = self._run_coach(p, weeks, acts, pace, ctx, "generate")
-            short = (p.race_date - today).days // 7 < min_recommended_weeks(p.goal_km)
-            if short:
-                summary += f"\n\nHeads-up: {min_recommended_weeks(p.goal_km)}+ weeks is ideal for this distance, so this is a compressed build."
+            inp = self._skeleton(p, acts, plan_start)
+            ctx = self._context(p, inp, acts, plan_start)
+            _, summary = self._run_coach(p, inp, acts, ctx, "generate")
             self.db.log("plan", summary)
             self.db.kv_set("last_review_week", monday(today).isoformat())
             return summary
@@ -146,8 +215,8 @@ class CoachService:
             today = self.today()
             acts = self.db.activities_since(today - timedelta(days=HISTORY_DAYS))
             plan_start = date.fromisoformat(self.db.kv_get("plan_start", monday(today).isoformat()))
-            weeks, pace = self._skeleton(p, acts, plan_start)
-            ctx = self._context(p, weeks, acts, pace, plan_start)
+            inp = self._skeleton(p, acts, plan_start, trust_actuals=True)   # a review follows what the athlete actually did
+            ctx = self._context(p, inp, acts, plan_start, note)
             ctx["athlete_note"] = note
             ctx["last_4_weeks_review"] = self._review_block(acts)
             ctx["unplanned_runs_last_14_days"] = self._extra_runs(acts)
@@ -155,7 +224,7 @@ class CoachService:
                 {k: w[k] for k in ("date", "type", "title", "distance_km")} for w in self.db.get_workouts(today, today + timedelta(days=13))
                 if w["status"] == "planned"
             ]
-            _, summary = self._run_coach(p, weeks, acts, pace, ctx, "adjust")
+            _, summary = self._run_coach(p, inp, acts, ctx, "adjust", note)
             self.db.log("review", summary if not note else f"You said: {note}\n\n{summary}")
             self.db.kv_set("last_review_week", monday(today).isoformat())
             return summary

@@ -1,0 +1,200 @@
+"""coach/knowledge.py pinned to docs/RESEARCH.md: if a constant drifts away from the research, a test here fails."""
+import math
+
+import pytest
+
+from coach import knowledge as K
+
+
+def hms(s):
+    return f"{int(s // 3600)}:{int(s % 3600 // 60):02d}:{int(round(s % 60)):02d}"
+
+
+# ---- pace maths (RESEARCH.md §9) -----------------------------------------------------------------------------------
+@pytest.mark.parametrize("dist_m,ref_s,tol", [(5000, 19 * 60 + 57, 6), (10000, 41 * 60 + 21, 10), (21097.5, 3600 + 31 * 60 + 35, 15), (42195, 3 * 3600 + 10 * 60 + 49, 30)])
+def test_vdot_50_matches_published_daniels_equivalents(dist_m, ref_s, tol):
+    # Published Daniels table values for VDOT 50 (checked against several calculators); our equations must land within seconds.
+    assert abs(K.race_time_s(50, dist_m) - ref_s) <= tol
+
+
+def test_vdot_roundtrip_and_known_values():
+    for v in (30, 40, 50, 60, 70):
+        for d in (5000, 10000, 21097.5, 42195):
+            assert K.vdot(d, K.race_time_s(v, d)) == pytest.approx(v, abs=0.01)
+    assert K.vdot(5000, 20 * 60) == pytest.approx(49.8, abs=0.2)
+
+
+def test_riegel_20_minute_5k_to_half_is_about_1_32():
+    assert K.riegel(20 * 60, 5, 21.0975) == pytest.approx(92 * 60, abs=10)
+    assert K.riegel(20 * 60, 5, 5) == pytest.approx(20 * 60)
+    assert K.riegel(20 * 60, 5, 10, exponent=1.04) < K.riegel(20 * 60, 5, 10, exponent=1.08)
+
+
+def test_training_paces_are_ordered_and_plausible():
+    paces = K.training_paces(50)
+    order = [paces["repetition"][0], paces["interval"][0], paces["threshold"][0], paces["marathon"][0], paces["easy"][0], paces["easy"][1]]
+    assert order == sorted(order) and len(set(order)) == len(order)         # faster zone = smaller s/km, strictly
+    assert 250 <= paces["threshold"][0] <= 262                              # VDOT 50 threshold ≈ 4:15/km
+    assert 232 <= paces["interval"][0] <= 240                               # ≈ 3:54/km
+    assert paces["easy"][1] - paces["easy"][0] > 30                         # easy is a range, not a point
+    assert paces["threshold"][0] == paces["threshold"][1]
+    faster = K.training_paces(60)
+    assert all(faster[z][0] < paces[z][0] for z in paces)                   # fitter runner = faster paces
+
+
+def test_paces_from_easy_follow_claude_coach_offsets():
+    p = K.paces_from_easy(390)                                              # 6:30/km easy
+    t = 390 - 60
+    assert p["threshold"][0] == t and p["marathon"][0] == t + 20 and p["interval"][0] == t - 17 and p["repetition"][0] == t - 30
+
+
+def test_pace_formatting():
+    assert K.fmt_pace(255) == "4:15/km" and K.fmt_pace(299.6) == "5:00/km"
+    text = K.pace_text(K.training_paces(50))
+    assert "–" in text["easy"] and "–" not in text["threshold"]
+
+
+# ---- volumes (RESEARCH.md §2) ---------------------------------------------------------------------------------------
+def test_peak_ranges_are_well_formed_and_ordered():
+    for lv in K.LEVELS:
+        for g, (lo, tgt, hi) in K.PEAK_KM[lv].items():
+            assert 0 < lo < tgt < hi, (lv, g)
+    for g in K.ANCHORS:
+        targets = [K.PEAK_KM[lv][g][1] for lv in K.LEVELS]
+        assert targets == sorted(targets), g                                 # more experienced => more volume
+    for lv in K.LEVELS:
+        targets = [K.PEAK_KM[lv][g][1] for g in K.ANCHORS]
+        assert targets == sorted(targets), lv                                # longer race => more volume
+
+
+@pytest.mark.parametrize("goal,level,lo_bound,hi_bound", [
+    (5, "beginner", 12, 32), (5, "intermediate", 29, 48), (5, "advanced", 48, 110),
+    (10, "intermediate", 40, 64), (21.0975, "beginner", 30, 64), (21.0975, "intermediate", 45, 80), (42.195, "advanced", 80, 140),
+])
+def test_targets_sit_inside_the_published_ranges(goal, level, lo_bound, hi_bound):
+    lo, tgt, hi = K.peak_range(goal, level)
+    assert lo_bound <= tgt <= hi_bound
+
+
+def test_custom_distances_interpolate_and_clamp():
+    lo10, t10, _ = K.peak_range(10, "intermediate")
+    lo21, t21, _ = K.peak_range(21.0975, "intermediate")
+    assert t10 < K.peak_range(15, "intermediate")[1] < t21
+    assert K.peak_range(3, "beginner") == K.peak_range(5, "beginner")
+    assert K.peak_range(60, "advanced") == K.peak_range(42.195, "advanced")
+
+
+def test_goal_names_and_assumed_baselines():
+    assert [K.goal_name(x) for x in (5, 8, 10, 21.0975, 30, 42.195)] == ["5K", "10K", "10K", "half marathon", "marathon", "marathon"]
+    assert K.assumed_baseline_km("beginner") < K.assumed_baseline_km("intermediate") < K.assumed_baseline_km("advanced")
+    assert K.assumed_baseline_km("nonsense") == K.assumed_baseline_km("intermediate")
+
+
+# ---- progression (RESEARCH.md §3) -----------------------------------------------------------------------------------
+@pytest.mark.parametrize("level", K.LEVELS)
+def test_ramp_is_percentage_with_a_small_floor(level):
+    assert K.next_week_km(100, level) == pytest.approx(100 * (1 + K.RAMP_PCT[level]))     # high volume: pure percentage
+    low = K.next_week_km(10, level) - 10
+    assert low == K.RAMP_FLOOR_KM[level] and low / 10 <= 0.26                             # low volume: floor, never > ~25%
+    assert 0.05 <= K.RAMP_PCT[level] <= 0.12
+
+
+def test_recovery_cadence_and_cut():
+    assert K.RECOVERY_EVERY in (3, 4) and 0.6 <= K.RECOVERY_FACTOR <= 0.8
+
+
+# ---- long runs (RESEARCH.md §4) -------------------------------------------------------------------------------------
+def test_long_run_caps_follow_claude_coach_event_targets():
+    assert K.long_run_cap_km(5, "advanced") <= 12 and K.long_run_cap_km(10, "advanced") <= 16
+    assert K.long_run_cap_km(21.0975, "advanced") <= 22 and K.long_run_cap_km(42.195, "advanced") <= 35
+    for g in K.ANCHORS:
+        caps = [K.long_run_cap_km(g, lv) for lv in K.LEVELS]
+        assert caps == sorted(caps)
+    assert K.long_run_max_minutes(42.195) == 210 and K.long_run_max_minutes(10) == 150
+
+
+def test_long_run_share_depends_on_distance_and_run_days():
+    assert K.long_run_share(20, 3, 5) == 0.40          # Higdon Novice 5K: long run ≈ 37% with 3 runs
+    assert K.long_run_share(40, 5, 10) == 0.30 and K.long_run_share(70, 5, 10) == 0.25
+    assert K.long_run_share(60, 5, 21.0975) == 0.35 and K.long_run_share(70, 5, 42.195) == 0.40
+
+
+def test_long_run_km_is_bounded_by_every_limit():
+    pace = 390
+    assert K.long_run_km(37, 5, "intermediate", 4, 75, pace) == 11.0                           # event cap
+    assert K.long_run_km(37, 5, "intermediate", 4, 30, pace) == 4.5                            # that day's minutes
+    assert K.long_run_km(20, 5, "beginner", 3, 120, pace) == 8.0                               # 40% of 20 = 8 = beginner cap
+    assert K.long_run_km(74, 42.195, "intermediate", 5, 300, pace) == 29.5                     # 40% of 74
+    assert K.long_run_km(120, 42.195, "advanced", 6, 400, pace) <= 35
+
+
+# ---- taper, plan length, hard work (RESEARCH.md §5–7) ---------------------------------------------------------------
+def test_taper_length_grows_with_distance_and_volume_falls():
+    lens = [len(K.taper_multipliers(g)) for g in (5, 10, 21.0975, 42.195)]
+    assert lens == [1, 1, 2, 3]
+    for g in (5, 10, 21.0975, 42.195):
+        m = K.taper_multipliers(g)
+        assert m == sorted(m, reverse=True) and 0.4 <= min(m) and max(m) <= 0.85       # 15–60% cut, progressive
+    assert K.taper_multipliers(42.195) is not K.TAPER[42.195]                          # callers can't mutate the table
+
+
+def test_minimum_weeks_fall_with_experience_and_rise_with_distance():
+    for g in K.ANCHORS:
+        w = [K.min_weeks(g, lv) for lv in K.LEVELS]
+        assert w == sorted(w, reverse=True)
+    assert K.min_weeks(42.195, "intermediate") >= 16                                   # claude-coach: marathon 16–20 weeks
+    assert K.min_weeks(5, "beginner") >= 8
+
+
+def test_quality_limits_by_level_phase_and_schedule():
+    q = K.quality_limit
+    assert q("beginner", "base", False, 3) == 0 and q("beginner", "build", False, 3) == 1
+    assert q("intermediate", "base", False, 4) == 1 and q("intermediate", "build", False, 4) == 2
+    assert q("intermediate", "build", False, 3) == 1                                   # needs 4+ run days for a second session
+    assert q("advanced", "peak", False, 5) == 2
+    assert q("advanced", "build", True, 5) == 0                                        # recovery week: no hard work
+    assert q("advanced", "taper", False, 5) == 1 and q("beginner", "race", False, 3) == 1
+    assert K.recommended_runs_per_week(5, "beginner") == 3 and K.recommended_runs_per_week(5, "intermediate") == 4
+    assert K.recommended_runs_per_week(42.195, "advanced") == 6
+
+
+def test_restart_fractions_decrease_with_time_off():
+    f = [K.restart_fraction(d) for d in (2, 7, 20, 60, 200)]
+    assert f == [1.0, 0.70, 0.60, 0.50, 0.30]
+
+
+# ---- workout menu (RESEARCH.md §10) ---------------------------------------------------------------------------------
+@pytest.mark.parametrize("goal", [5, 10, 21.0975, 42.195])
+def test_workout_menu_covers_every_phase_and_has_easy_and_long(goal):
+    menu = K.workout_menu(goal, "intermediate")
+    assert set(menu) == {"base", "build", "peak", "taper", "race"}
+    assert all(menu[ph] for ph in menu)
+    assert any("Easy run" in m for m in menu["build"]) and any("Long run" in m for m in menu["base"])
+    assert any("Shakeout" in m for m in menu["taper"])
+
+
+def test_beginner_menu_offers_run_walk_and_5k_menu_has_5k_specific_work():
+    assert any("Run/walk" in m for m in K.workout_menu(5, "beginner")["base"])
+    assert not any("Run/walk" in m for m in K.workout_menu(5, "advanced")["base"])
+    assert any("800 m" in m for m in K.workout_menu(5, "intermediate")["build"])
+    assert any("goal 5K pace" in m for m in K.workout_menu(5, "intermediate")["peak"])
+
+
+# ---- what the athlete is told ---------------------------------------------------------------------------------------
+def _outlook(**kw):
+    base = dict(baseline_km=22, baseline_source="strava", start_km=22, peak_km=37, ideal_low=30, ideal_target=38, ideal_high=46,
+                limit="goal", time_cap_km=60, weeks_to_race=12, min_weeks=6)
+    base.update(kw)
+    return K.VolumeOutlook(**base)
+
+
+def test_athlete_text_explains_source_and_limit():
+    t = _outlook().athlete_text("5K", "intermediate")
+    assert "22 km/week" in t and "37 km/week" in t and "30–46" in t and "Strava" in t
+    assert "available running time" not in t and "enough weeks" not in t       # no limit sentence when the goal range is reachable
+    assert "available running time" in _outlook(limit="time", time_cap_km=24).athlete_text("5K", "intermediate")
+    assert "enough weeks" in _outlook(limit="ramp", weeks_to_race=6).athlete_text("5K", "intermediate")
+    assert "assumed" in _outlook(baseline_source="assumed").athlete_text("5K", "intermediate")
+    assert "compressed" in _outlook(weeks_to_race=4, min_weeks=6).athlete_text("5K", "intermediate")
+    assert "compressed" not in _outlook(weeks_to_race=12).athlete_text("5K", "intermediate")
+    assert math.isclose(_outlook().to_dict()["peak_km"], 37.0)

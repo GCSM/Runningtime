@@ -37,9 +37,10 @@ def test_skeleton_shape_and_progression():
     assert weeks[0].week_start == monday(TODAY) and weeks[-1].race_week
     assert weeks[-1].week_start == monday(p.race_date)
     train = [w for w in weeks if w.phase in ("base", "build", "peak")]
+    from coach import knowledge as K
     for a, b in zip(train, train[1:]):
-        if not b.recovery and not a.recovery:
-            assert b.target_km <= a.target_km * 1.09 + 0.5
+        if not b.recovery and not a.recovery:     # growth is bounded by the researched, level-based ramp (+0.5 km rounding)
+            assert b.target_km <= a.target_km + K.max_weekly_increase_km(a.target_km, p.experience) + 0.5
     assert any(w.recovery for w in weeks)
     assert [w.phase for w in weeks][-3:] == ["taper", "taper", "race"][-3:] or weeks[-1].phase == "race"
     assert weeks[-2].target_km < max(w.target_km for w in train)

@@ -25,8 +25,9 @@
   <div class="seg" style="margin-bottom:16px">
     {% for e in ['beginner','intermediate','advanced'] %}<label><input type="radio" name="experience" value="{{ e }}" {{ 'checked' if (p.experience if p else 'intermediate')==e }}><span>{{ e|title }}</span></label>{% endfor %}
   </div>
-  <label class="f"><span class="lab">Current weekly distance</span><input type="number" name="baseline" inputmode="decimal" step="0.5" min="0" value="{{ (p.baseline_km / (1.609344 if p.units=='mi' else 1))|round(1) if p else 0 }}"></label>
-  <p class="xs mut" style="margin-top:-8px">Used until Strava has your real numbers.</p>
+  <p class="xs mut" style="margin:-8px 0 16px">{% for e in ['beginner','intermediate','advanced'] %}<b>{{ e|title }}:</b> {{ level_help[e] }}.{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+  <label class="f"><span class="lab">Typical weekly distance right now</span><input type="number" name="baseline" inputmode="decimal" step="0.5" min="0" required placeholder="e.g. 25 (0 if you're just starting)" value="{{ (p.baseline_km / (1.609344 if p.units=='mi' else 1))|round(1) if p else '' }}"></label>
+  <p class="xs mut" style="margin-top:-8px">In the unit you chose above. Be honest: your plan builds from this number. Once Strava is connected, your real runs replace it.</p>
 </section>
 
 <section class="card flush">
