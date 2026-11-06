@@ -1,0 +1,6 @@
+# Reverse proxy with automatic HTTPS (run Caddy in another container or on the same one).
+# Set in /etc/running-coach.env:  PUBLIC_URL=https://coach.example.com   FORWARDED_ALLOW_IPS=<this proxy's IP>
+coach.example.com {
+    encode zstd gzip
+    reverse_proxy 10.0.0.50:8000   # the Running Coach container's IP
+}

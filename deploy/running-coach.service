@@ -1,0 +1,18 @@
+[Unit]
+Description=Running Coach
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=coach
+Group=coach
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=/etc/running-coach.env
+ExecStart=@APP_DIR@/.venv/bin/uvicorn coach.web:create_app --factory --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+# Deliberately no ProtectSystem/PrivateTmp: they often fail inside unprivileged LXC without nesting.
+
+[Install]
+WantedBy=multi-user.target
