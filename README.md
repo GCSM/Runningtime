@@ -42,13 +42,19 @@ Every plan, run, and Strava connection is private to its user. On a server other
 Users can delete their account and all their data from **Me**. Serve over HTTPS (reverse proxy or Tailscale) and set
 `PUBLIC_URL` to the `https://` address so cookies are marked `Secure`.
 
-### Strava
-1. Create an app at <https://www.strava.com/settings/api>.
-2. Set **Authorization Callback Domain** to the host in `PUBLIC_URL`.
-3. Put the client id/secret in `.env`, restart. Each user then taps **Connect with Strava** under **Me**
-   (scope `read,activity:read_all`) and their tokens are stored separately.
-4. Strava limits a new API app to a small number of connected athletes until you request a higher limit
-   (see your app's page on Strava). Check this before inviting more than a couple of people.
+### Strava (each user connects their own app)
+Strava limits every API app to a small number of athletes, so instead of one shared app, **each user enters their own**.
+It takes about two minutes and needs nothing in the server config:
+1. On the **Me** tab, the Strava card walks the user through creating a free app at <https://www.strava.com/settings/api>.
+2. In that app, set **Authorization Callback Domain** to the host of the server's `PUBLIC_URL` (the card shows the exact value).
+3. Paste the app's **Client ID** and **Client Secret** into the card, save, then tap **Connect with Strava**.
+
+Credentials and tokens are stored per account (in the SQLite file; treat it as secret). Changing to a different app
+disconnects the old one, and deleting an account removes everything. A user's own app limits Strava access to that
+user, which is exactly what you want.
+
+Optional: to offer one shared app instead, set `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` in the server config. A user's own
+app always takes priority over the shared one.
 
 No Strava? The planner still works from your self-reported weekly mileage; you just won't get automatic adaptation.
 

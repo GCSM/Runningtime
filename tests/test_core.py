@@ -368,3 +368,107 @@ def test_check_tool_reports_rejected_key_and_success(tmp_path, monkeypatch, caps
     assert "Note:" in capsys.readouterr().out
     f.write_text("ANTHROPIC_API_KEY=\n")
     assert check_mod.main(["check", str(f)]) == 1
+
+
+# ---- per-user Strava apps ---------------------------------------------------------------
+from urllib.parse import parse_qs, urlparse
+
+import coach.strava as strava_mod
+
+SECRET_A = "a" * 40
+SECRET_B = "b" * 40
+
+
+def real_strava_client(tmp_path, **settings_kw):
+    """App wired with the REAL StravaClient (no network is touched until a token exchange)."""
+    s = Settings(db_path=str(tmp_path / "s.db"), sync_interval_min=0, public_url="http://coach.lan:8000", **settings_kw)
+    db = DB(s.db_path)
+    return TestClient(create_app(s, db=db, coach=FakeCoach(), clock=lambda: TODAY)), db
+
+
+def authorize_params(c):
+    r = c.get("/strava/connect", follow_redirects=False)
+    assert r.status_code in (302, 307) and "strava.com/oauth/authorize" in r.headers["location"], r.headers.get("location")
+    return {k: v[0] for k, v in parse_qs(urlparse(r.headers["location"]).query).items()}
+
+
+def test_each_user_connects_through_their_own_strava_app(tmp_path):
+    a, db = real_strava_client(tmp_path)                       # server has NO shared Strava app
+    signup(a, "a@example.com", "A")
+    assert "Client ID and Secret first" in a.get("/strava/connect", follow_redirects=True).text   # nothing configured yet
+    assert "Save my Strava app" in a.get("/me").text
+
+    assert "should be a number" in a.post("/strava/app", data={"client_id": "abc", "client_secret": SECRET_A}, follow_redirects=True).text
+    assert "look right" in a.post("/strava/app", data={"client_id": "111", "client_secret": "short"}, follow_redirects=True).text
+    assert a.post("/strava/app", data={"client_id": " 111 ", "client_secret": f" {SECRET_A} "}, follow_redirects=True).status_code == 200
+
+    page = a.get("/me").text
+    assert "111" in page and SECRET_A not in page              # the secret is never shown again
+    assert "Connect with Strava" in page and "Change or remove my Strava app" in page
+    assert "coach.lan" not in page or "Authorization Callback Domain" not in page      # setup steps are replaced once an app is saved
+    params = authorize_params(a)
+    assert params["client_id"] == "111" and params["redirect_uri"] == "http://coach.lan:8000/strava/callback"
+
+    # A second user is unaffected, and can use a different app of their own.
+    b = TestClient(a.app)
+    signup(b, "b@example.com", "B")
+    assert "Save my Strava app" in b.get("/me").text and "111" not in b.get("/me").text
+    b.post("/strava/app", data={"client_id": "222", "client_secret": SECRET_B})
+    assert authorize_params(b)["client_id"] == "222" and authorize_params(a)["client_id"] == "111"
+    assert db.for_user(1).kv_get("strava_app")["client_secret"] == SECRET_A
+    assert db.for_user(2).kv_get("strava_app")["client_secret"] == SECRET_B
+
+
+def test_token_exchange_uses_the_users_own_credentials(tmp_path, monkeypatch):
+    c, db = real_strava_client(tmp_path)
+    signup(c)
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
+    state = authorize_params(c)["state"]
+    posted = {}
+
+    class Resp:
+        def __init__(self, code, data): self.status_code, self._d, self.text = code, data, str(data)
+        def json(self): return self._d
+
+    def fake_post(url, data=None, timeout=None):
+        posted.update(data)
+        return Resp(200, {"access_token": "t", "refresh_token": "r", "expires_at": 9_999_999_999, "athlete": {"firstname": "Ann", "lastname": "R"}})
+
+    monkeypatch.setattr(strava_mod.httpx, "post", fake_post)
+    monkeypatch.setattr(strava_mod.httpx, "get", lambda *a, **k: Resp(200, []))
+    r = c.get("/strava/callback", params={"code": "abc", "scope": "read,activity:read_all", "state": state}, follow_redirects=True)
+    assert "Strava connected" in r.text, r.text[-500:]
+    assert posted["client_id"] == "111" and posted["client_secret"] == SECRET_A and posted["code"] == "abc"
+    assert db.for_user(1).kv_get("strava_token")["athlete_name"] == "Ann R"
+    assert "Connected as Ann R" in c.get("/me").text
+
+
+def test_changing_app_clears_old_token_but_resaving_same_app_keeps_it(tmp_path):
+    c, db = real_strava_client(tmp_path)
+    signup(c)
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
+    db.for_user(1).kv_set("strava_token", {"access_token": "t", "refresh_token": "r", "expires_at": 9e9, "athlete_name": "Ann"})
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_B})        # rotated secret, same app
+    assert db.for_user(1).kv_get("strava_token") is not None
+    c.post("/strava/app", data={"client_id": "999", "client_secret": SECRET_B})        # different app: old tokens are invalid
+    assert db.for_user(1).kv_get("strava_token") is None
+    db.for_user(1).kv_set("strava_token", {"access_token": "t", "refresh_token": "r", "expires_at": 9e9})
+    c.post("/strava/app/remove")
+    assert db.for_user(1).kv_get("strava_app") is None and db.for_user(1).kv_get("strava_token") is None
+
+
+def test_shared_server_app_is_only_a_fallback(tmp_path):
+    c, db = real_strava_client(tmp_path, strava_client_id="777", strava_client_secret="s" * 40)
+    signup(c)
+    assert "This server has a shared Strava app" in c.get("/me").text
+    assert authorize_params(c)["client_id"] == "777"                                  # falls back to the server app
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
+    assert authorize_params(c)["client_id"] == "111"                                  # the user's own app wins
+
+
+def test_deleting_account_removes_strava_credentials(tmp_path):
+    c, db = real_strava_client(tmp_path)
+    signup(c)
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
+    c.post("/account/delete", data={"confirm": "a@example.com"})
+    assert db.for_user(1).kv_get("strava_app") is None

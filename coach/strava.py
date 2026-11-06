@@ -33,6 +33,36 @@ class StravaClient:
     def __init__(self, settings: Settings, db: DB):
         self.s, self.db = settings, db
 
+    # ---- app credentials: each user's own Strava app, falling back to a server-wide one --------------
+    def _creds(self) -> tuple[str, str]:
+        app = self.db.kv_get("strava_app") or {}
+        return (app.get("client_id") or self.s.strava_client_id, app.get("client_secret") or self.s.strava_client_secret)
+
+    @property
+    def configured(self) -> bool:
+        cid, sec = self._creds()
+        return bool(cid and sec)
+
+    @property
+    def app_source(self) -> str:
+        """'user' if this account saved its own app, 'server' if falling back to the shared one, else ''."""
+        if self.db.kv_get("strava_app"):
+            return "user"
+        return "server" if self.s.strava_configured else ""
+
+    def app_client_id(self) -> str:
+        return self._creds()[0]
+
+    def save_app(self, client_id: str, client_secret: str) -> None:
+        old = self.db.kv_get("strava_app") or {}
+        self.db.kv_set("strava_app", {"client_id": client_id, "client_secret": client_secret})
+        if old.get("client_id") != client_id:  # tokens belong to the app that issued them
+            self.db.kv_delete("strava_token")
+
+    def remove_app(self) -> None:
+        self.db.kv_delete("strava_app")
+        self.db.kv_delete("strava_token")
+
     @property
     def connected(self) -> bool:
         return bool(self.db.kv_get("strava_token"))
@@ -45,15 +75,16 @@ class StravaClient:
 
     def authorize_url(self, state: str) -> str:
         q = {
-            "client_id": self.s.strava_client_id, "response_type": "code", "approval_prompt": "auto",
+            "client_id": self._creds()[0], "response_type": "code", "approval_prompt": "auto",
             "redirect_uri": f"{self.s.public_url}/strava/callback", "scope": "read,activity:read_all", "state": state,
         }
         return f"{AUTH_URL}?{urlencode(q)}"
 
     def _token_request(self, **data) -> dict:
+        cid, sec = self._creds()
         r = httpx.post(
             f"{API}/oauth/token",
-            data={"client_id": self.s.strava_client_id, "client_secret": self.s.strava_client_secret, **data},
+            data={"client_id": cid, "client_secret": sec, **data},
             timeout=20,
         )
         if r.status_code != 200:

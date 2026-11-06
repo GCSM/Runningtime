@@ -43,7 +43,7 @@ To change settings later, use `deploy/reconfigure.sh` (see below).
 | `PUBLIC_URL` | address users type; `http://IP:8000` for plain LAN use, `https://…` once you add HTTPS |
 | `TZ` | decides what counts as "today" and when the weekly review runs |
 | `INVITE_CODE` / `ALLOW_SIGNUPS` | restrict who can sign up |
-| `STRAVA_CLIENT_ID/SECRET` | optional; callback domain in Strava = host of `PUBLIC_URL` |
+| `STRAVA_CLIENT_ID/SECRET` | optional shared Strava app; normally leave blank because each user adds their own on the Me tab (callback domain in Strava = host of `PUBLIC_URL`) |
 
 > **Plain HTTP vs HTTPS:** keep `PUBLIC_URL` matching how you actually reach the app. With an `https://` `PUBLIC_URL` the
 > login cookie is marked Secure and browsers silently drop it over HTTP, so sign-in appears to do nothing. The installer

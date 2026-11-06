@@ -211,6 +211,9 @@ class CoachService:
         today = self.today()
         p = self.db.get_profile()
         data: dict = {"profile": p, "today": today, "strava_connected": self.strava.connected,
+                      "strava_ready": getattr(self.strava, "configured", False),
+                      "strava_app_source": getattr(self.strava, "app_source", ""),
+                      "strava_client_id": self.strava.app_client_id() if hasattr(self.strava, "app_client_id") else "",
                       "strava_name": self.strava.athlete_name() if self.strava.connected else "",
                       "last_sync": self.db.kv_get("last_sync"), "log": self.db.recent_log(1)}
         if not p:

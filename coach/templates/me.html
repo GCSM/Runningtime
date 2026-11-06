@@ -18,10 +18,34 @@
   <p class="sm mut" style="margin:2px 0 14px">Last sync: {{ d.last_sync|fmt_ts }}. Runs sync automatically.</p>
   <div class="row"><form method="post" action="/sync" data-busy="Syncing with Strava…" class="grow"><button class="sec">Sync now</button></form>
   <form method="post" action="/strava/disconnect" class="grow"><button class="danger">Disconnect</button></form></div>
-{% elif settings.strava_configured %}
-  <p class="sm mut" style="margin-bottom:14px">Connect Strava so your coach can compare what you planned with what you ran, and adjust.</p>
+{% elif d.strava_ready %}
+  <p class="sm mut" style="margin-bottom:14px">{% if d.strava_app_source == 'user' %}Your Strava app (Client ID {{ d.strava_client_id }}) is saved.{% else %}This server has a shared Strava app.{% endif %} Connect to let your coach compare what you planned with what you ran.</p>
   <a class="btn strava" href="/strava/connect">Connect with Strava</a>
-{% else %}<p class="sm mut">Strava isn’t configured on this server. The admin needs to set <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_CLIENT_SECRET</code>.</p>{% endif %}
+{% else %}
+  <p class="sm mut" style="margin-bottom:12px">Strava lets each person connect through their own free app, so your data stays yours. It takes about two minutes:</p>
+  <ol class="sm" style="margin:0 0 16px 18px;padding:0;line-height:1.55">
+    <li>Open <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> and create an app (any name and website).</li>
+    <li>Set <b>Authorization Callback Domain</b> to <code>{{ callback_host }}</code>.</li>
+    <li>Copy the <b>Client ID</b> and <b>Client Secret</b> below.</li>
+  </ol>
+{% endif %}
+{% if not d.strava_connected and d.strava_app_source != 'user' %}
+  <form method="post" action="/strava/app" class="stack">
+    <label class="f" style="margin:0"><span class="lab">Client ID</span><input type="text" name="client_id" inputmode="numeric" autocomplete="off" required></label>
+    <label class="f" style="margin:0"><span class="lab">Client Secret</span><input type="password" name="client_secret" autocomplete="off" autocapitalize="none" required></label>
+    <button class="sec">Save my Strava app</button>
+  </form>
+  <p class="xs mut" style="margin-top:10px">Callback URL used: <code>{{ callback_url }}</code>. If Strava won't accept an IP address as the domain, use a hostname that resolves to this server and set <code>PUBLIC_URL</code> to match.</p>
+{% endif %}
+{% if d.strava_app_source == 'user' %}
+  <details style="margin-top:16px"><summary class="sm b" style="color:var(--mut)">Change or remove my Strava app</summary>
+    <form method="post" action="/strava/app" class="stack" style="margin-top:12px">
+      <label class="f" style="margin:0"><span class="lab">Client ID</span><input type="text" name="client_id" inputmode="numeric" autocomplete="off" value="{{ d.strava_client_id }}" required></label>
+      <label class="f" style="margin:0"><span class="lab">New Client Secret</span><input type="password" name="client_secret" autocomplete="off" autocapitalize="none" required></label>
+      <button class="sec">Update</button></form>
+    <form method="post" action="/strava/app/remove" style="margin-top:10px" onsubmit="return confirm('Remove your Strava app and disconnect Strava?')"><button class="danger">Remove app &amp; disconnect</button></form>
+  </details>
+{% endif %}
 </section>
 
 <section class="card"><h2>Account</h2>

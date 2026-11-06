@@ -239,7 +239,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def me(request: Request):
         svc = request.state.svc
         p = svc.db.get_profile()
-        return render(request, "me.html", d=svc.dashboard(), p=p, units=p.units if p else "km", settings=settings)
+        from urllib.parse import urlparse
+
+        return render(request, "me.html", d=svc.dashboard(), p=p, units=p.units if p else "km", settings=settings,
+                      callback_host=urlparse(settings.public_url).hostname or "", callback_url=f"{settings.public_url}/strava/callback")
 
     @app.get("/setup")
     def setup(request: Request):
@@ -294,8 +297,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     @app.get("/strava/connect")
     def strava_connect(request: Request):
         svc = request.state.svc
-        if not settings.strava_configured:
-            return back("/me", err="Strava isn't configured on this server yet.")
+        if not getattr(svc.strava, "configured", False):
+            return back("/me", err="Add your Strava app's Client ID and Secret first.")
         state = secrets.token_urlsafe(16)
         svc.db.kv_set("strava_state", state)
         return RedirectResponse(svc.strava.authorize_url(state))
@@ -317,6 +320,21 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         except Exception as e:
             return back("/me", err=f"Strava connection failed: {e}")
         return back("/me", f"Strava connected; imported {n} recent runs.")
+
+    @app.post("/strava/app")
+    def strava_app_save(request: Request, client_id: str = Form(""), client_secret: str = Form("")):
+        cid, sec = client_id.strip(), client_secret.strip()
+        if not cid.isdigit():
+            return back("/me", err="The Client ID should be a number (shown on your Strava API settings page).")
+        if len(sec) < 16 or not sec.isalnum():
+            return back("/me", err="That Client Secret doesn't look right: it's a long string of letters and digits, with no spaces.")
+        request.state.svc.strava.save_app(cid, sec)
+        return back("/me", "Saved your Strava app. Now tap Connect with Strava.")
+
+    @app.post("/strava/app/remove")
+    def strava_app_remove(request: Request):
+        request.state.svc.strava.remove_app()
+        return back("/me", "Removed your Strava app and disconnected Strava.")
 
     @app.post("/strava/disconnect")
     def strava_disconnect(request: Request):

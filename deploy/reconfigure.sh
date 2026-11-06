@@ -144,8 +144,8 @@ else
     new) set_var INVITE_CODE "$(random_code)"; echo "  New invite code: $(get_var INVITE_CODE)" ;;
     *) err="$(validate INVITE_CODE "$ans")" || { rm -f "$BACKUP"; die "$err"; }; set_var INVITE_CODE "$ans" ;;
   esac
-  ask STRAVA_CLIENT_ID "Strava client ID"
-  ask STRAVA_CLIENT_SECRET "Strava client secret" secret
+  ask STRAVA_CLIENT_ID "Shared Strava client ID (optional; users normally enter their own)"
+  ask STRAVA_CLIENT_SECRET "Shared Strava client secret (optional)" secret
   ask SYNC_INTERVAL_MIN "Strava sync interval in minutes (0 disables)"
   ask AUTO_ADJUST "Automatic weekly plan review: true | false"
 fi
