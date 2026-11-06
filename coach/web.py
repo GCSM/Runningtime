@@ -416,7 +416,15 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         except Exception as e:
             return back("/setup", err=f"Check your inputs: {e}")
         had_plan = bool(svc.db.get_workouts())
+        old = svc.db.get_profile()
         svc.db.save_profile(p)
+        if had_plan and old is not None and old != p:
+            # The plan was built from the old schedule and goal: re-plan now rather than leave it stale until someone taps Review.
+            uid = request.state.user["id"]
+            start_job(uid, "review", "Re-planning around your changes", lambda: svc.review("I changed my goal or schedule in Goal & schedule."),
+                      "Your plan was updated for your new goal and schedule.")
+            warn = svc.readiness_warnings()
+            return back("/", err=f"Saved, but heads-up: {warn[0]}") if warn else back("/", "Saved. Re-planning around your changes…")
         warn = svc.readiness_warnings()
         if warn:
             return back("/", err=f"Saved, but heads-up: {warn[0]}")

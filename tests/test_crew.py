@@ -163,3 +163,25 @@ def test_progress_shows_nothing_due_instead_of_0_of_0_on_a_new_plan(tmp_path):
     c, _ = __import__("test_chat").web(tmp_path, __import__("test_chat").FakeChat())
     page = c.get("/progress").text
     assert "Nothing due yet" in page and "0<small> / 0" not in page
+
+
+def test_changing_schedule_or_goal_replans_automatically_and_raises_the_ceiling(tmp_path):
+    from test_chat import web
+    c, db = web(tmp_path, FakeChat())
+    udb = db.for_user(1)
+    marathon = {**SETUP, "baseline": "25", "goal_preset": "Marathon", "race_date": str(TODAY + timedelta(weeks=24)),
+                "av_mon": "on", "min_tue": "60", "min_thu": "60", "min_sat": "60", "min_sun": "60", "min_mon": "60"}
+    c.post("/setup", data=marathon)
+    c.post("/plan/generate"); wait_job(c)
+    before = max(w["target_km"] for w in udb.get_weeks())
+    r = c.post("/setup", data={**marathon, "min_sun": "150", "min_tue": "90", "min_thu": "90", "min_sat": "90", "min_mon": "90"}, follow_redirects=True)
+    assert "Re-planning" in r.text or "Saved" in r.text
+    job = wait_job(c)
+    assert job["kind"] == "review" and job["status"] == "done" and "new goal and schedule" in job["message"]
+    after = max(w["target_km"] for w in udb.get_weeks())
+    assert after > before + 10 and max(w["long_run_km"] for w in udb.get_weeks()) >= 20
+    assert udb.kv_get("volume_outlook")["peak_km"] == after
+    # saving with no actual change doesn't spend a model call
+    runs_before = len(udb.recent_log(50))
+    c.post("/setup", data={**marathon, "min_sun": "150", "min_tue": "90", "min_thu": "90", "min_sat": "90", "min_mon": "90"})
+    assert wait_job(c)["kind"] == "review" and len(udb.recent_log(50)) == runs_before
