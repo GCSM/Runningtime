@@ -52,6 +52,10 @@ run_check() {  # test the Anthropic key/model as the service sees them
 if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
   [ "$(id -u)" -eq 0 ] || die "Run as root."
   systemctl cat "$SERVICE" >/dev/null 2>&1 || die "Service '$SERVICE' isn't installed. Run deploy/install.sh first."
+  # The port (and other process settings) live in the systemd unit, which only install.sh rewrites. An old unit
+  # silently ignores COACH_PORT, so refuse to continue rather than "succeed" without effect.
+  systemctl cat "$SERVICE" 2>/dev/null | grep -q 'COACH_PORT' ||
+    die "The installed service file is out of date (it predates COACH_PORT, so it still listens on a fixed port). Run: bash deploy/install.sh"
 fi
 
 KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT COACH_PORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE

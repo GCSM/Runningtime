@@ -36,7 +36,7 @@ def box(tmp_path):
     bindir = tmp_path / "bin"
     bindir.mkdir()
     log = tmp_path / "calls.log"
-    shim(bindir, "systemctl", f'echo "systemctl $*" >> {log}\nexit 0\n')
+    shim(bindir, "systemctl", f'echo "systemctl $*" >> {log}\n[ "$1" = cat ] && echo \'ExecStart=uvicorn --port ${{COACH_PORT}}\'\nexit 0\n')
     shim(bindir, "curl", f'echo "curl $*" >> {log}\nexit "${{FAKE_CURL_EXIT:-0}}"\n')
     return dict(env=env, bindir=bindir, log=log, tmp=tmp_path)
 
@@ -247,3 +247,12 @@ def test_old_https_install_keeps_8000_so_a_reverse_proxy_keeps_working(tmp_path)
 def test_migration_never_overrides_an_explicit_port(tmp_path):
     cfg, _ = _migrate(tmp_path, "PUBLIC_URL=http://x:9000\nCOACH_PORT=9000\n")
     assert cfg["COACH_PORT"] == "9000" and cfg["PUBLIC_URL"] == "http://x:9000"
+
+
+def test_reconfigure_refuses_when_installed_service_file_is_outdated(box):
+    shim(box["bindir"], "systemctl", f'echo "systemctl $*" >> {box["log"]}\n[ "$1" = cat ] && echo "ExecStart=uvicorn --port 8000"\nexit 0\n')
+    r = run(box, "COACH_PORT=80")
+    assert r.returncode != 0 and "out of date" in r.stderr and "install.sh" in r.stderr
+    assert box["env"].read_text() == BASE_ENV                      # nothing changed, nothing restarted
+    assert "restart" not in box["log"].read_text()
+    assert run(box, "--show").returncode == 0                      # read-only commands still work
