@@ -239,10 +239,17 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def me(request: Request):
         svc = request.state.svc
         p = svc.db.get_profile()
+        import ipaddress
         from urllib.parse import urlparse
 
+        host = urlparse(settings.public_url).hostname or ""
+        try:
+            ipaddress.ip_address(host)
+            is_ip = host not in ("127.0.0.1", "::1")
+        except ValueError:
+            is_ip = False
         return render(request, "me.html", d=svc.dashboard(), p=p, units=p.units if p else "km", settings=settings,
-                      callback_host=urlparse(settings.public_url).hostname or "", callback_url=f"{settings.public_url}/strava/callback")
+                      callback_host=host, callback_is_ip=is_ip, callback_url=f"{settings.public_url}/strava/callback")
 
     @app.get("/setup")
     def setup(request: Request):

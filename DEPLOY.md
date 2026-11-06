@@ -85,6 +85,17 @@ says what failed. Common causes:
 | couldn't find the model | fix `COACH_MODEL` (e.g. `claude-sonnet-5-5`) |
 | couldn't reach Anthropic | the container needs internet access and working DNS |
 
+## Troubleshooting: Strava says `redirect_uri` is invalid
+Strava compares the host in the callback URL the app sends with the **Authorization Callback Domain** on the user's
+Strava app. They must match exactly. The domain is the bare host only: no `http://`, no port, no trailing slash.
+The Me tab shows the exact value to use (it's the host of `PUBLIC_URL`) and the full callback URL being sent.
+- The port (`:8000`) is not the usual cause; it doesn't belong in the domain field.
+- If the server is addressed by an IP (`http://192.168.1.50:8000`), Strava may refuse an IP as the callback domain
+  (not confirmed either way). Give the server a hostname instead — a local DNS name such as `coach.lan`, or a
+  `nip.io` name like `coach.192.168.1.50.nip.io`, which resolves to that IP — then run `bash deploy/reconfigure.sh`,
+  set `PUBLIC_URL` to `http://<that hostname>:8000`, and use that hostname as the Strava callback domain.
+- Changed `PUBLIC_URL`? The app restarts, but the Strava app's callback domain must be updated to the new host too.
+
 ## 3. HTTPS access (optional; pick one)
 - **Reverse proxy** (Caddy / Nginx Proxy Manager / Traefik) in another container: see `deploy/Caddyfile.example`.
   Set `FORWARDED_ALLOW_IPS` to the proxy's IP in the env file.

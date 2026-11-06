@@ -25,7 +25,7 @@
   <p class="sm mut" style="margin-bottom:12px">Strava lets each person connect through their own free app, so your data stays yours. It takes about two minutes:</p>
   <ol class="sm" style="margin:0 0 16px 18px;padding:0;line-height:1.55">
     <li>Open <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> and create an app (any name and website).</li>
-    <li>Set <b>Authorization Callback Domain</b> to <code>{{ callback_host }}</code>.</li>
+    <li>Set <b>Authorization Callback Domain</b> to exactly <code>{{ callback_host }}</code> (just the host: no <code>http://</code>, no port, no slash).</li>
     <li>Copy the <b>Client ID</b> and <b>Client Secret</b> below.</li>
   </ol>
 {% endif %}
@@ -35,7 +35,12 @@
     <label class="f" style="margin:0"><span class="lab">Client Secret</span><input type="password" name="client_secret" autocomplete="off" autocapitalize="none" required></label>
     <button class="sec">Save my Strava app</button>
   </form>
-  <p class="xs mut" style="margin-top:10px">Callback URL used: <code>{{ callback_url }}</code>. If Strava won't accept an IP address as the domain, use a hostname that resolves to this server and set <code>PUBLIC_URL</code> to match.</p>
+  <p class="xs mut" style="margin-top:10px">Callback URL sent to Strava: <code>{{ callback_url }}</code></p>
+  {% if callback_is_ip %}<p class="sm" style="margin-top:10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">
+    <b>Heads up:</b> this server is addressed by an IP ({{ callback_host }}). Strava may reject an IP as the callback domain
+    (“redirect_uri invalid”). If it does, give the server a hostname — a local DNS name like <code>coach.lan</code>, or
+    <code>coach.{{ callback_host }}.nip.io</code> which resolves to this IP — and set <code>PUBLIC_URL</code> to use it
+    (<code>bash deploy/reconfigure.sh</code>), then use that same host as the callback domain.</p>{% endif %}
 {% endif %}
 {% if d.strava_app_source == 'user' %}
   <details style="margin-top:16px"><summary class="sm b" style="color:var(--mut)">Change or remove my Strava app</summary>

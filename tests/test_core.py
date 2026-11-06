@@ -472,3 +472,14 @@ def test_deleting_account_removes_strava_credentials(tmp_path):
     c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
     c.post("/account/delete", data={"confirm": "a@example.com"})
     assert db.for_user(1).kv_get("strava_app") is None
+
+
+def test_me_page_warns_when_callback_host_is_an_ip(tmp_path):
+    for url, expect in (("http://192.168.1.50:8000", True), ("http://coach.lan:8000", False), ("http://localhost:8000", False)):
+        s = Settings(db_path=str(tmp_path / f"{abs(hash(url))}.db"), sync_interval_min=0, public_url=url)
+        c = TestClient(create_app(s, db=DB(s.db_path), coach=FakeCoach(), clock=lambda: TODAY))
+        signup(c)
+        page = c.get("/me").text
+        assert ("redirect_uri invalid" in page) is expect, url
+        assert "just the host" in page                                 # the exact-host instruction is always shown
+        assert ("nip.io" in page) is expect
