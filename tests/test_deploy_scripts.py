@@ -43,7 +43,7 @@ def box(tmp_path):
 
 def run(box, *args, stdin="", extra_env=None, script=RECONF):
     e = {**os.environ, "ENV_FILE": str(box["env"]), "PATH": f"{box['bindir']}:{os.environ['PATH']}",
-         "HEALTH_TRIES": "1", **(extra_env or {})}
+         "HEALTH_TRIES": "1", "CHECK_CMD": "true", **(extra_env or {})}
     return subprocess.run(["bash", str(script), *args], input=stdin, capture_output=True, text=True, env=e, timeout=60)
 
 
@@ -150,3 +150,35 @@ def test_install_configure_only_still_works_after_refactor(box, tmp_path):
     assert r.returncode == 0, r.stderr
     text = fresh.read_text()
     assert "ANTHROPIC_API_KEY=k" in text and "INVITE_CODE=" in text and len(text.split("INVITE_CODE=")[1].split()[0]) == 8
+
+
+def test_pasted_key_is_cleaned_and_bad_keys_rejected(box):
+    r = run(box, 'ANTHROPIC_API_KEY=  "sk-ant-api03-newkey"  ')          # spaces + wrapping quotes
+    assert r.returncode == 0, r.stderr
+    assert val(box, "ANTHROPIC_API_KEY") == "sk-ant-api03-newkey"
+    for bad in ("ANTHROPIC_API_KEY=sk-ant-has space inside", "ANTHROPIC_API_KEY=not-an-anthropic-key"):
+        before = box["env"].read_text()
+        r = run(box, bad)
+        assert r.returncode != 0 and box["env"].read_text() == before, bad
+
+
+def test_changing_key_or_model_triggers_the_check_but_other_changes_do_not(box):
+    marker = box["tmp"] / "checked"
+    chk = {"CHECK_CMD": f"touch {marker}"}
+    run(box, "COACH_EFFORT=low", extra_env=chk)
+    assert not marker.exists()                                           # unrelated change: no API test
+    run(box, "COACH_MODEL=claude-haiku-5-5", extra_env=chk)
+    assert marker.exists()                                               # model change: tested
+    marker.unlink()
+    run(box, "ANTHROPIC_API_KEY=sk-ant-another-key-999", "--no-check", extra_env=chk)
+    assert not marker.exists()                                           # --no-check respected
+    run(box, "ANTHROPIC_API_KEY=sk-ant-third-key-000", extra_env=chk)
+    assert marker.exists()
+
+
+def test_check_flag_only_runs_the_check(box):
+    marker = box["tmp"] / "checked"
+    r = run(box, "--check", extra_env={"CHECK_CMD": f"touch {marker}"})
+    assert r.returncode == 0 and marker.exists()
+    assert box["env"].read_text() == BASE_ENV and not box["log"].exists()   # nothing changed or restarted
+    assert run(box, "--check", extra_env={"CHECK_CMD": "false"}).returncode != 0

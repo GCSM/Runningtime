@@ -18,6 +18,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import auth
 from .config import Settings
+from .errors import explain
 from .db import DB
 from .llm import Coach
 from .models import DAYS, KM_PER_MI, DayAvail, Profile
@@ -159,7 +160,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back(path, err=str(e))
         except Exception as e:
             log.exception("action failed")
-            return back(path, err=f"Something went wrong: {e}")
+            return back(path, err=explain(e) or f"Something went wrong: {e}")
 
     # ---- accounts ----------------------------------------------------------
     @app.get("/login")

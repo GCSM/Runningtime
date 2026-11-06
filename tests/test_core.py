@@ -282,3 +282,85 @@ def test_claude_refusal_and_truncation_are_reported():
         Coach("m", client=FakeSDK([_reply([], "refusal")])).plan({}, mode="generate")
     with pytest.raises(RuntimeError, match="cut off"):
         Coach("m", client=FakeSDK([_reply([], "max_tokens")])).plan({}, mode="generate")
+
+
+# ---- friendly API-key / Anthropic error handling -------------------------------------------
+import anthropic
+import httpx2
+
+from coach import check as check_mod
+from coach.errors import CoachUnavailable, explain
+
+
+def _api_error(cls, status, message="boom"):
+    resp = httpx2.Response(status, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
+    return cls(message, response=resp, body=None)
+
+
+def test_explain_maps_known_failures_to_actionable_messages():
+    assert "rejected the API key" in explain(_api_error(anthropic.AuthenticationError, 401))
+    assert "out of credit" in explain(_api_error(anthropic.BadRequestError, 400, "Your credit balance is too low to access the API"))
+    assert "COACH_MODEL" in explain(_api_error(anthropic.NotFoundError, 404))
+    assert "rate limit" in explain(_api_error(anthropic.RateLimitError, 429)).lower()
+    assert "internet" in explain(anthropic.APIConnectionError(request=httpx2.Request("POST", "https://x")))
+    assert "No Anthropic API key" in explain(CoachUnavailable("No Anthropic API key is configured."))
+    assert explain(ValueError("something else")) is None
+
+
+def test_web_shows_friendly_message_for_rejected_key(tmp_path):
+    class Rejecting(FakeCoach):
+        def plan(self, ctx, *, mode, feedback=None):
+            raise _api_error(anthropic.AuthenticationError, 401)
+
+    s = Settings(db_path=str(tmp_path / "k.db"), sync_interval_min=0)
+    db = DB(s.db_path)
+    c = TestClient(create_app(s, db=db, coach=Rejecting(), strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY))
+    signup(c)
+    c.post("/setup", data=FORM)
+    r = c.post("/plan/generate", follow_redirects=True)
+    assert "rejected the API key" in r.text and "Something went wrong" not in r.text
+
+
+def test_missing_key_gives_clear_message_not_a_stack_trace(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    s = Settings(db_path=str(tmp_path / "m.db"), sync_interval_min=0)
+    db = DB(s.db_path)
+    c = TestClient(create_app(s, db=db, coach=Coach("claude-sonnet-5-5"), strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY))
+    signup(c)
+    c.post("/setup", data=FORM)
+    assert "No Anthropic API key is configured" in c.post("/plan/generate", follow_redirects=True).text
+
+
+def test_check_tool_spots_common_paste_mistakes(tmp_path):
+    assert check_mod.problems_with_key("sk-ant-api03-fine") == []
+    assert any("quotes" in p for p in check_mod.problems_with_key('"sk-ant-abc"'))
+    assert any("whitespace" in p for p in check_mod.problems_with_key(" sk-ant-abc"))
+    assert any("middle" in p for p in check_mod.problems_with_key("sk-ant-ab cd"))
+    assert any("sk-ant-" in p for p in check_mod.problems_with_key("sk-proj-abc"))
+    assert check_mod.problems_with_key("") == ["ANTHROPIC_API_KEY is empty or missing."]
+    f = tmp_path / "x.env"
+    f.write_text("# c\nANTHROPIC_API_KEY=sk-ant-1\nCOACH_MODEL=m\n")
+    assert check_mod.read_env_file(str(f)) == {"ANTHROPIC_API_KEY": "sk-ant-1", "COACH_MODEL": "m"}
+
+
+def test_check_tool_reports_rejected_key_and_success(tmp_path, monkeypatch, capsys):
+    f = tmp_path / "x.env"
+    f.write_text("ANTHROPIC_API_KEY=sk-ant-badkey\nCOACH_MODEL=claude-sonnet-5-5\n")
+
+    class Bad:
+        def __init__(self, **kw): self.messages = NS(create=self._c)
+        def _c(self, **kw): raise _api_error(anthropic.AuthenticationError, 401)
+
+    monkeypatch.setattr(anthropic, "Anthropic", Bad)
+    assert check_mod.main(["check", str(f)]) == 1
+    out = capsys.readouterr().out
+    assert "rejected the API key" in out and "sk-ant-" in out and "sk-ant-badkey" not in out   # key never printed in full
+
+    class Good:
+        def __init__(self, **kw): self.messages = NS(create=lambda **k: NS(stop_reason="end_turn"))
+
+    monkeypatch.setattr(anthropic, "Anthropic", Good)
+    assert check_mod.main(["check", str(f)]) == 0
+    assert "accepted the key" in capsys.readouterr().out
+    f.write_text("ANTHROPIC_API_KEY=\n")
+    assert check_mod.main(["check", str(f)]) == 1

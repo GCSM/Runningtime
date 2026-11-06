@@ -5,7 +5,9 @@
 #   sudo bash deploy/reconfigure.sh --show               # print current settings (secrets masked) and exit
 #   sudo bash deploy/reconfigure.sh COACH_EFFORT=low TZ=America/Chicago     # change specific settings, no prompts
 #   sudo bash deploy/reconfigure.sh --unset INVITE_CODE  # remove a setting
+#   sudo bash deploy/reconfigure.sh --check              # test the Anthropic key/model the way the service sees them
 #   Flags: --no-restart   write the config but don't restart (used for testing)
+#          --no-check     don't auto-test the Anthropic key after changing the key or model
 #
 # Safety: the old config is backed up first; all values are validated before anything is written; the service
 # restarts only if something changed; and if the app isn't healthy afterwards the previous config is restored.
@@ -18,13 +20,15 @@ PORT=8000
 HEALTH_TRIES="${HEALTH_TRIES:-20}"
 . "$APP_DIR/deploy/lib.sh"
 
-SHOW=0; RESTART=1; ARGS=(); UNSETS=()
+SHOW=0; RESTART=1; CHECK=0; AUTOCHECK=1; ARGS=(); UNSETS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --show) SHOW=1 ;;
     --no-restart) RESTART=0 ;;
+    --check) CHECK=1 ;;
+    --no-check) AUTOCHECK=0 ;;
     --unset) shift; UNSETS+=("${1:?--unset needs a KEY}") ;;
-    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *=*) ARGS+=("$1") ;;
     *) echo "Unknown argument: $1 (try --help)" >&2; exit 2 ;;
   esac
@@ -33,8 +37,20 @@ done
 
 die() { echo "Error: $*" >&2; exit 1; }
 
+clean() {  # trim whitespace and one pair of surrounding quotes (common paste mistakes)
+  local v="$1"
+  v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"
+  case "$v" in \"*\"|\'*\') v="${v:1:${#v}-2}" ;; esac
+  printf '%s' "$v"
+}
+
+run_check() {  # test the Anthropic key/model as the service sees them
+  if [ -n "${CHECK_CMD:-}" ]; then $CHECK_CMD
+  else "$APP_DIR/.venv/bin/python" -m coach.check "$ENV_FILE"; fi
+}
+
 [ -f "$ENV_FILE" ] || die "$ENV_FILE not found. Is Running Coach installed? Run deploy/install.sh first."
-if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ]; then
+if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
   [ "$(id -u)" -eq 0 ] || die "Run as root."
   systemctl cat "$SERVICE" >/dev/null 2>&1 || die "Service '$SERVICE' isn't installed. Run deploy/install.sh first."
 fi
@@ -61,6 +77,9 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
   local k="$1" v="$2"
   case "$v" in *$'\n'*|*$'\r'*) echo "$k can't contain line breaks"; return 1 ;; esac
   case "$k" in
+    ANTHROPIC_API_KEY)
+      case "$v" in *[[:space:]]*) echo "ANTHROPIC_API_KEY contains a space — paste just the key"; return 1 ;; esac
+      case "$v" in sk-ant-*) ;; *) echo "ANTHROPIC_API_KEY should start with sk-ant-"; return 1 ;; esac ;;
     COACH_EFFORT) case "$v" in low|medium|high) ;; *) echo "COACH_EFFORT must be low, medium or high"; return 1 ;; esac ;;
     PUBLIC_URL) case "$v" in http://*|https://*) ;; *) echo "PUBLIC_URL must start with http:// or https://"; return 1 ;; esac ;;
     TZ) [ -f "/usr/share/zoneinfo/$v" ] || { echo "Unknown timezone '$v' (e.g. America/New_York)"; return 1; } ;;
@@ -71,6 +90,10 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
 }
 
 if [ "$SHOW" = 1 ]; then show_settings; exit 0; fi
+if [ "$CHECK" = 1 ]; then run_check; exit $?; fi
+
+# Normalise pasted values (trim, drop wrapping quotes).
+for i in "${!ARGS[@]}"; do ARGS[$i]="${ARGS[$i]%%=*}=$(clean "${ARGS[$i]#*=}")"; done
 
 # Validate everything up front: all-or-nothing.
 for kv in "${ARGS[@]+"${ARGS[@]}"}"; do
@@ -91,6 +114,7 @@ ask() {  # ask KEY "label" [secret] : current value is the default; '-' clears; 
     else
       read -rp "$label [${cur:-not set}] (Enter keeps, - clears): " ans || ans=""
     fi
+    ans="$(clean "$ans")"
     if [ -z "$ans" ]; then return 0; fi
     if [ "$ans" = "-" ]; then set_var "$k" ""; return 0; fi
     if err="$(validate "$k" "$ans")"; then set_var "$k" "$ans"; return 0; fi
@@ -161,6 +185,13 @@ healthy() {
 }
 if healthy; then
   echo "Running Coach is up with the new settings. (Previous config kept at $BACKUP)"
+  new_key="$(get_var ANTHROPIC_API_KEY)"; new_model="$(get_var COACH_MODEL)"
+  old_key="$(printf '%s\n' "$BEFORE" | grep '^ANTHROPIC_API_KEY=' | tail -n1 | cut -d= -f2- || true)"
+  old_model="$(printf '%s\n' "$BEFORE" | grep '^COACH_MODEL=' | tail -n1 | cut -d= -f2- || true)"
+  if [ "$AUTOCHECK" = 1 ] && { [ "$new_key" != "$old_key" ] || [ "$new_model" != "$old_model" ]; }; then
+    echo; echo "Testing the Anthropic key and model…"
+    run_check || echo "  (The app is running, but plan generation will fail until this is fixed. Re-run: bash deploy/reconfigure.sh)" >&2
+  fi
 else
   echo "The service did not become healthy with the new settings. Restoring the previous config…" >&2
   cat "$BACKUP" > "$ENV_FILE"

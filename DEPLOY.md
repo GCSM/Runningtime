@@ -65,6 +65,26 @@ Values are validated first (effort, URL scheme, timezone, true/false, numbers), 
 walkthrough, type `-` to clear a value, and `new` at the invite-code prompt to generate a code. The 5 most recent
 backups are kept as `/etc/running-coach.env.bak.<timestamp>`.
 
+## Troubleshooting: "API key error" when building a plan
+The app reads its config only when it starts, so **after changing the key, restart it**. `reconfigure.sh` does that for
+you and then tests the key; if you edited the file by hand, run `systemctl restart running-coach`.
+
+Test what the service will actually see:
+```bash
+cd /opt/running-coach
+bash deploy/reconfigure.sh --check        # or: .venv/bin/python -m coach.check /etc/running-coach.env
+```
+It prints the key (masked) and model, flags paste mistakes (quotes, spaces, wrong prefix), makes one tiny API call, and
+says what failed. Common causes:
+
+| Message | Fix |
+|---|---|
+| rejected the API key (401) | key is wrong, revoked, or from another provider — create a new one in the Anthropic Console |
+| wrapped in quotes / whitespace | re-enter with `bash deploy/reconfigure.sh` (it also strips these for you) |
+| out of credit | add credit under Billing in the Anthropic Console (API credit is separate from a Claude subscription) |
+| couldn't find the model | fix `COACH_MODEL` (e.g. `claude-sonnet-5-5`) |
+| couldn't reach Anthropic | the container needs internet access and working DNS |
+
 ## 3. HTTPS access (optional; pick one)
 - **Reverse proxy** (Caddy / Nginx Proxy Manager / Traefik) in another container: see `deploy/Caddyfile.example`.
   Set `FORWARDED_ALLOW_IPS` to the proxy's IP in the env file.

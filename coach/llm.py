@@ -73,8 +73,16 @@ class Coach:
     @property
     def client(self):
         if self._client is None:
+            import os
+
             import anthropic  # imported lazily so the app can start (and show setup help) without a key
 
+            from .errors import CoachUnavailable
+
+            if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+                raise CoachUnavailable(
+                    "No Anthropic API key is configured. Add it with “bash deploy/reconfigure.sh”, then try again."
+                )
             self._client = anthropic.Anthropic()
         return self._client
 
