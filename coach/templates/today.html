@@ -64,6 +64,7 @@
     <div class="meta">{{ w.duration_min }} min{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}{% if w.actual_km %} · you ran {{ w.actual_km|dist(units) }}{% endif %}</div>
     {% if w.description %}<div class="desc">{{ w.description }}</div>{% endif %}
     {% if w.activity_id %}<a class="hero-link" href="/run/{{ w.activity_id }}">Run details →</a>{% endif %}
+    {% if w.type != 'race' and w.status in ('planned','partial') %}<a class="hero-link" href="/workout/{{ w.id }}/playlist">🎧 Run playlist →</a>{% endif %}
     {% if w.status == 'planned' and w.type != 'race' %}
     <details class="hero-more"><summary>Can’t run today?</summary>
       <form method="post" action="/workout/{{ w.id }}/skip" class="stack"><input type="hidden" name="next" value="/">

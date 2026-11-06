@@ -46,12 +46,15 @@ create table if not exists activity_details(
 create table if not exists kudos(
     from_user integer not null, to_user integer not null, week_start text not null, emoji text not null, created_at text not null,
     primary key(from_user, to_user, week_start));
+create table if not exists playlists(
+    user_id integer not null, workout_id integer not null, data text not null,
+    primary key(user_id, workout_id));
 create table if not exists coach_log(
     id integer primary key autoincrement, user_id integer not null,
     created_at text not null, kind text not null, message text not null);
 """
 
-USER_TABLES = ("kv", "profile", "weeks", "workouts", "activities", "coach_log", "feedback", "chat_messages", "activity_details")
+USER_TABLES = ("kv", "profile", "weeks", "workouts", "activities", "coach_log", "feedback", "chat_messages", "activity_details", "playlists")
 
 # Columns added after the first release: (table, column, definition). Applied to existing databases on startup.
 MIGRATIONS = [
@@ -270,6 +273,17 @@ class DB:
         with self.conn() as c:
             r = c.execute("select * from workouts where id=? and user_id=?", (wid, self.uid)).fetchone()
         return dict(r) if r else None
+
+    def get_playlist(self, wid: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select data from playlists where user_id=? and workout_id=?", (self.uid, wid)).fetchone()
+        return json.loads(r["data"]) if r else None
+
+    def save_playlist(self, wid: int, data: dict) -> None:
+        with self.conn() as c:
+            c.execute("insert into playlists values(?,?,?) on conflict(user_id,workout_id) do update set data=excluded.data",
+                      (self.uid, wid, json.dumps(data)))
+            c.execute("delete from playlists where user_id=? and workout_id not in (select id from workouts where user_id=?)", (self.uid, self.uid))
 
     def update_workout(self, wid: int, **fields) -> None:
         bad = set(fields) - self.WORKOUT_EDITABLE

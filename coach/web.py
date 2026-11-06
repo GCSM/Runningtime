@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import auth
+from .music import DeezerResolver, PlaylistCoach, PlaylistService
 from .chat import ChatCoach, ChatService
 from .config import Settings
 from .errors import explain
@@ -60,11 +61,13 @@ def goal_seconds(f) -> int | None:
     return parse_hms(str(f.get("goal_time", "")))
 
 
-def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None) -> FastAPI:
+def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
     coach = coach or Coach(settings.model, effort=settings.effort)
     chat_llm = chat or ChatCoach(settings.chat_model, settings.chat_effort)
+    playlist_llm = playlist or PlaylistCoach(settings.chat_model, settings.chat_effort)
+    song_lookup = resolver or DeezerResolver()
     strava_factory = strava_factory or (lambda udb: StravaClient(settings, udb))
 
     def service_for(uid: int) -> CoachService:
@@ -186,7 +189,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         sec = int(round(sec or 0))
         return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60}:{sec % 60:02d}"
 
-    templates.env.filters.update(dist=dist, pace=pace, fmt_date=fmt_date, hms=hms, fmt_ts=fmt_ts, dur=dur)
+    templates.env.filters.update(mmss=lambda sec: f"{int(sec) // 3600}:{int(sec) % 3600 // 60:02d}:{int(sec) % 60:02d}" if sec >= 3600 else f"{int(sec) // 60}:{int(sec) % 60:02d}", dist=dist, pace=pace, fmt_date=fmt_date, hms=hms, fmt_ts=fmt_ts, dur=dur)
 
     def render(request: Request, name: str, **ctx):
         svc = getattr(request.state, "svc", None)
@@ -525,6 +528,33 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def calendar_disable(request: Request):
         request.state.svc.disable_calendar()
         return back("/me", "Calendar link turned off. Anything subscribed to it will stop updating.")
+
+    # ---- run playlists (no Spotify account needed) -----------------------------------------------------------
+    def music_for(request: Request) -> PlaylistService:
+        return PlaylistService(request.state.svc, playlist_llm, song_lookup, settings.playlist_daily_limit)
+
+    @app.get("/workout/{wid}/playlist")
+    def playlist_page(request: Request, wid: int):
+        ms = music_for(request)
+        w = ms.db.get_workout(wid)
+        if not w:
+            return back("/plan", err="That workout wasn't found.")
+        p = ms.db.get_profile()
+        return render(request, "playlist.html", w=w, pl=ms.get(wid), units=p.units if p else "km", prefs=ms.prefs(),
+                      left=max(0, ms.limit - ms.used_today()))
+
+    @app.post("/workout/{wid}/playlist")
+    def playlist_build(request: Request, wid: int):
+        uid, ms = request.state.user["id"], music_for(request)
+        if not ms.db.get_workout(wid):
+            return back("/plan", err="That workout wasn't found.")
+        job = start_job(uid, "playlist", "Building your playlist", lambda: ms.generate(wid), "Your playlist is ready.")
+        return job_response(request, uid, job, f"/workout/{wid}/playlist")
+
+    @app.post("/music/prefs")
+    def music_prefs(request: Request, likes: str = Form(""), favourites: str = Form(""), clean_only: str = Form(""), next: str = Form("/me")):
+        music_for(request).save_prefs(likes, favourites, clean_only == "on")
+        return back(safe_next(next, "/me"), "Music taste saved. New playlists will use it.")
 
     # ---- coach chat (cheapest model; proposals need a tap) --------------------------------------------------
     def chat_for(request: Request) -> ChatService:

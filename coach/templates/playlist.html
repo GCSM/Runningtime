@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% from "_macros.html" import icon %}{% block body %}
+<div class="kick rise"><a href="/plan" style="color:inherit">← Plan</a></div>
+<h1 class="lt rise">Run playlist</h1>
+<p class="sub rise">{{ w.title }} · {{ w.date|fmt_date('%a %b %-d') }} · {{ w.duration_min }} min</p>
+
+{% if pl %}
+<section class="card rise" id="pl">
+  <div class="row" style="align-items:flex-end;justify-content:space-between">
+    <div><div class="lab">Music</div><div class="num" style="font-size:34px;line-height:1">{{ pl.total_s|mmss }}</div></div>
+    <div class="right xs mut">for a {{ pl.target_s|mmss }} run<br>{{ ('%+d s' % pl.error_s) if pl.error_s else 'exact fit' }} · {{ pl.count }} songs</div>
+  </div>
+  <div class="plbar" aria-hidden="true">{% for sg in pl.segments %}<i class="e{{ sg.energy }}" style="flex:{{ sg.seconds }}" title="{{ sg.name }}"></i>{% endfor %}</div>
+  <div class="plkey xs mut">{% for sg in pl.segments %}<span>{{ sg.name }} · {{ (sg.seconds / 60)|round|int }}m</span>{% endfor %}</div>
+  {% if pl.stale %}<p class="sm" style="margin-top:12px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">This run changed since the playlist was built. Rebuild it to match.</p>{% endif %}
+  {% if pl.verified < pl.count %}<p class="xs mut" style="margin-top:10px">{{ pl.verified }} of {{ pl.count }} song lengths confirmed from a music catalogue; the rest are estimates, so the total can be a little off.</p>{% endif %}
+</section>
+
+{% for sg in pl.segments %}
+<section class="card rise">
+  <div class="row" style="justify-content:space-between;align-items:baseline"><h2>{{ sg.name }}</h2><span class="xs mut">{{ sg.label }} · {{ sg.bpm_lo }}–{{ sg.bpm_hi }} bpm</span></div>
+  <ol class="tracks">{% for t in sg.tracks %}
+    <li><a href="{{ t.link }}" target="_blank" rel="noopener"><span class="tt">{{ t.title }}</span><span class="ta xs mut">{{ t.artist }}</span></a>
+      <span class="tm xs mut">{{ t.start_s|mmss }}{{ '' if t.verified else ' ~' }}</span></li>{% endfor %}
+  </ol>
+  {% if not sg.tracks %}<p class="sm mut">No songs for this part.</p>{% endif %}
+</section>
+{% endfor %}
+
+<section class="card rise">
+  <div class="row" style="gap:10px">
+    <button type="button" class="grow" id="copy-pl" data-text="{{ pl.text }}">Copy song list</button>
+    <form method="post" action="/workout/{{ w.id }}/playlist" data-job class="grow"><button class="sec" style="width:100%">Rebuild</button></form>
+  </div>
+  <p class="xs mut" style="margin-top:10px">Tap a song to find it in Spotify. To make a playlist: in Spotify create a new playlist, then add the songs in this order. (Spotify doesn't let this app create playlists on a home network.)</p>
+</section>
+{% else %}
+<section class="card empty rise">
+  <div class="ico">🎧</div><h3 style="font-size:22px;font-weight:800">Music that fits this run</h3>
+  <p class="mut" style="margin:6px 0 16px">A calm warm-up, songs that build with the hard parts, and a cool-down that winds back down. The length matches your {{ w.duration_min }}-minute run.</p>
+  <form method="post" action="/workout/{{ w.id }}/playlist" data-job><button>Build my playlist</button></form>
+</section>
+{% endif %}
+<p class="xs mut rise" style="text-align:center">{{ left }} playlist{{ '' if left == 1 else 's' }} left today</p>
+
+<section class="card rise">
+  <details {{ 'open' if not prefs.likes and not prefs.favourites }}><summary><h2 style="display:inline">Your music taste</h2></summary>
+    <form method="post" action="/music/prefs" class="stack" style="margin-top:12px"><input type="hidden" name="next" value="/workout/{{ w.id }}/playlist">
+      <label class="f"><span class="lab">Genres, artists, vibes</span><input type="text" name="likes" maxlength="300" value="{{ prefs.likes }}" placeholder="e.g. 90s hip hop, Daft Punk, upbeat indie"></label>
+      <label class="f"><span class="lab">Favourite songs (one per line, “Artist - Title”)</span><textarea name="favourites" rows="5" placeholder="Kanye West - Stronger&#10;The Killers - Mr. Brightside">{{ prefs.favourites|join('\n') }}</textarea></label>
+      <label class="row" style="gap:10px;align-items:center"><input type="checkbox" name="clean_only" {{ 'checked' if prefs.clean_only }} style="width:22px;height:22px"><span class="sm">Clean versions only</span></label>
+      <button class="sec">Save taste</button>
+    </form>
+  </details>
+</section>
+<script>(function(){if(window.__plCopy)return;window.__plCopy=1;document.addEventListener("click",function(e){var b=e.target.closest("#copy-pl");if(!b)return;var t=b.dataset.text||"";
+function done(){var o=b.textContent;b.textContent="Copied";setTimeout(function(){b.textContent=o},1500)}
+if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(done,fb)}else fb();
+function fb(){var a=document.createElement("textarea");a.value=t;a.style.cssText="position:fixed;opacity:0";document.body.appendChild(a);a.select();try{document.execCommand("copy");done()}catch(x){}a.remove()}})})();</script>
+{% endblock %}

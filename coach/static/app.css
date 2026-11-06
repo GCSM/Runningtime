@@ -290,3 +290,11 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
   background:var(--card);box-shadow:var(--shadow);border:1px solid var(--cardb);font-weight:800;opacity:0;pointer-events:none;z-index:60;transition:opacity .15s}
 .wordmark{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px}.wordmark b{color:var(--hl);font-style:italic}
 .day .more .full{grid-column:1/-1}.lens span{padding:10px 14px}.lens small{opacity:.65;font-weight:600;font-size:12px}
+
+/* run playlist */
+.plbar{display:flex;gap:3px;height:12px;margin:16px 0 8px}.plbar i{border-radius:6px;background:var(--hl)}
+.plbar .e1{opacity:.25}.plbar .e2{opacity:.4}.plbar .e3{opacity:.6}.plbar .e4{opacity:.82}.plbar .e5{opacity:1;background:linear-gradient(90deg,var(--hl),var(--hl2))}
+.plkey{display:flex;flex-wrap:wrap;gap:4px 12px}
+.tracks{list-style:none;margin:10px 0 0;padding:0}.tracks li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.tracks li:first-child{border-top:0}.tracks a{display:flex;flex-direction:column;min-width:0;color:var(--fg)}.tracks .tt{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tracks .tm{flex:none}

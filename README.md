@@ -117,6 +117,22 @@ suggestion. Settings: `COACH_CHAT_MODEL`, `COACH_CHAT_EFFORT`, `CHAT_MESSAGES_PE
   10 days of workouts, last 7 days of run summaries and any "how did it feel" notes.
 - Runs from before the plan started still count as *history* (they set your starting volume and pace), but don't appear in the plan.
 
+### Run playlists
+
+Open any upcoming run → **🎧 Run playlist**. The app builds a song list whose length matches the run and whose intensity
+follows its shape: a chill warm-up, songs that build toward the hard part (energy 5 for intervals), and a cool-down that
+winds back down. Add your genres, artists and favourite songs under "Your music taste".
+
+How it works, and why there's no "Connect Spotify" button:
+- Spotify only accepts `https://` redirect URLs (or 127.0.0.1), so a plain-HTTP home server can't complete its login, and Spotify
+  no longer gives new apps tempo or energy data. (Dev-mode apps are also limited to 5 users and need Premium.)
+- The run's shape is plain code (`coach/runshape.py`). The cheapest model (`COACH_CHAT_MODEL`) suggests real songs per segment
+  from your taste. Each song's real length is looked up in Deezer's public catalogue (no account); lengths it can't confirm
+  stay as estimates and the page says so. Plain code then picks songs to hit the total (usually within 30 seconds).
+- Songs link to Spotify search; "Copy song list" gives you the order to paste into a playlist you make yourself.
+- Only your taste notes and the run's segments go to the model, never your name, email or plan. Capped by `PLAYLISTS_PER_DAY` (default 10).
+- Not tested against the live Anthropic or Deezer services (tests use fakes), so check one real playlist after deploying.
+
 ## Develop
 ```bash
 pip install -r requirements-dev.txt && pytest

@@ -38,6 +38,7 @@
     {% if w.note %}<p class="xs" style="margin-top:6px">{{ w.note }}</p>{% endif %}
     {% if w.moved_from %}<p class="xs" style="margin-top:6px">Moved from {{ w.moved_from|fmt_date }}</p>{% endif %}
     {% if w.activity_id %}<p style="margin-top:10px"><a class="btn sec sm" href="/run/{{ w.activity_id }}">Run details</a></p>{% endif %}
+    {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}<p style="margin-top:10px"><a class="btn sec sm" href="/workout/{{ w.id }}/playlist">🎧 Run playlist</a></p>{% endif %}
     {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}
     <div class="wk-act">
       <form method="post" action="/workout/{{ w.id }}/move"><input type="hidden" name="next" value="/plan">
