@@ -231,7 +231,38 @@ class CoachService:
         data["week_pct"] = min(100, round(100 * actual / week["target_km"])) if week and week["target_km"] else 0
         data["has_plan"] = bool(self.db.get_workouts())
         data["next_workout"] = next((w for w in self.db.get_workouts(today + timedelta(days=1)) if w["status"] == "planned"), None)
+        data["streak"] = self.streak()
+        data["journey"] = self.journey()
         return data
+
+    def streak(self) -> int:
+        """Consecutive most-recent scheduled runs that were done (fully or partly), stopping at the first miss."""
+        past = [w for w in self.db.get_workouts(end=self.today()) if w["status"] in ("completed", "partial", "missed")]
+        n = 0
+        for w in reversed(past):
+            if w["status"] == "missed":
+                break
+            n += 1
+        return n
+
+    def journey(self) -> dict | None:
+        """The whole plan as phase segments plus where the athlete is now."""
+        weeks = self.db.get_weeks()
+        if not weeks:
+            return None
+        this_wk = monday(self.today()).isoformat()
+        segs: list[dict] = []
+        for w in weeks:
+            if segs and segs[-1]["phase"] == w["phase"]:
+                segs[-1]["weeks"] += 1
+            else:
+                segs.append({"phase": w["phase"], "weeks": 1})
+        total = len(weeks)
+        current = min(total, max(1, sum(1 for w in weeks if w["week_start"] <= this_wk)))
+        for sg in segs:
+            sg["pct"] = round(100 * sg["weeks"] / total, 2)
+        return {"segments": segs, "total": total, "current": current, "pct": round(100 * (current - 0.5) / total, 1),
+                "phase": next((w["phase"] for w in weeks if w["week_start"] == this_wk), segs[0]["phase"])}
 
     def full_plan(self) -> list[dict]:
         weeks = {w["week_start"]: {**w, "workouts": []} for w in self.db.get_weeks()}
@@ -265,6 +296,13 @@ class CoachService:
             "adherence_pct": round(100 * len(done) / len(ws)) if ws else None,
             "best_week_km": max((w["actual"] for w in weeks), default=0),
         }
+        acts = self.db.activities_since(today - timedelta(days=365))
+        long_pace = [a["moving_s"] / (a["distance_m"] / 1000) for a in acts if a["distance_m"] >= 3000 and a["moving_s"]]
+        stats["longest_km"] = round(max((a["distance_m"] for a in acts), default=0) / 1000, 1)
+        stats["best_pace_s_km"] = round(min(long_pace)) if long_pace else None
+        stats["hours"] = round(sum(a["moving_s"] for a in acts) / 3600, 1)
+        stats["runs_logged"] = len(acts)
+        stats["streak"] = self.streak()
         return {"weeks": weeks, "stats": stats, "max": max([max(w["actual"], w["target"] or w["planned"]) for w in weeks] + [1])}
 
 

@@ -1,13 +1,15 @@
 {% extends "base.html" %}{% from "_macros.html" import icon, workout_row %}{% block body %}
-<h1 class="lt">Plan</h1>
-{% if weeks %}<p class="sub">Tap a run for details.</p>
-<div class="card flush">
+<div class="kick rise">Race-day roadmap</div><h1 class="lt rise">Plan</h1>
+{% if weeks %}<p class="sub rise">Tap a run for details.</p>
+{% set mx = (weeks|map(attribute='planned_km')|max) or 1 %}
+<div class="card flush rise">
 {% for wk in weeks %}{% set cur = wk.workouts and wk.week_start <= today and (wk.workouts|last).date >= today %}
-<details class="week {{ 'cur' if cur }}" {{ 'open' if cur }}>
+<details class="week ph-{{ wk.phase or 'base' }} {{ 'cur' if cur }}" {{ 'open' if cur }}>
   <summary>
     <div class="grow"><div class="b">Week of {{ wk.week_start|fmt_date('%b %-d') }}</div>
-      <div class="xs"><span class="pill">{{ wk.phase or 'plan' }}{{ ' · recovery' if wk.recovery }}</span></div></div>
-    <div class="right"><div class="b">{{ wk.planned_km|dist(units) }}</div><div class="xs mut">{{ wk.workouts|length }} runs</div></div>{{ icon('chev') }}
+      <div class="xs"><span class="pill">{{ wk.phase or 'plan' }}{{ ' · recovery' if wk.recovery }}</span></div>
+      <div class="mini"><i style="width:{{ (100 * wk.planned_km / mx)|round }}%"></i></div></div>
+    <div class="right"><div class="num" style="font-size:22px">{{ wk.planned_km|dist(units, false) }}<span class="mut" style="font-size:12px;font-style:normal"> {{ units }}</span></div><div class="xs mut">{{ wk.workouts|length }} runs</div></div>{{ icon('chev') }}
   </summary>
   {% for w in wk.workouts %}{{ workout_row(w, units, today) }}{% endfor %}
 </details>

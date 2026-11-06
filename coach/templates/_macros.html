@@ -6,6 +6,7 @@
 {%- elif name == 'check' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
 {%- elif name == 'x' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
 {%- elif name == 'half' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 12h12"/></svg>
+{%- elif name == 'pulse' -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h4l2.5-6 4 11 2.5-5H22"/></svg>
 {%- elif name == 'chev' -%}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
 {%- endif -%}
 {%- endmacro %}
@@ -37,7 +38,8 @@
 {%- endmacro %}
 
 {% macro ring(pct, big, small) -%}
-<div class="ring"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="42" fill="none" stroke-width="10"/>
-<circle class="val" cx="50" cy="50" r="42" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="{{ 263.9 * (1 - pct/100) }}"/></svg>
-<div class="lbl"><b>{{ big }}</b><span>{{ small }}</span></div></div>
+<div class="ring"><svg viewBox="0 0 100 100"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--hl)"/><stop offset="1" style="stop-color:var(--hl2)"/></linearGradient></defs>
+<circle class="track" cx="50" cy="50" r="42" fill="none" stroke-width="9"/>
+<circle class="val" cx="50" cy="50" r="42" fill="none" stroke="url(#rg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="{{ 263.9 * (1 - pct/100) }}"/></svg>
+<div class="lbl"><b class="num" data-count="{{ big }}">{{ big }}</b><span>{{ small }}</span></div></div>
 {%- endmacro %}

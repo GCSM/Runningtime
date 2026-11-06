@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Running Coach</title>
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Coach">
 <link rel="apple-touch-icon" href="/static/icon-180.png"><link rel="icon" href="/static/icon-192.png"><link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="stylesheet" href="/static/app.css?v=3">
+<link rel="stylesheet" href="/static/app.css?v=6">
 </head><body>
 {% if flash %}<div class="toast" role="status">{{ flash }}</div>{% endif %}
 {% if error %}<div class="toast err" role="alert">{{ error }}</div>{% endif %}
@@ -21,11 +21,15 @@
   <a href="/me" class="{{ 'on' if path in ('/me','/setup') }}">{{ icon('me') }}Me</a>
 </nav></div>
 {% endif %}
-<div class="overlay" id="busy" role="alert" aria-live="polite"><div class="spin"></div><div><div class="b" id="busy-t">Working…</div><div class="sm mut" style="margin-top:4px">This can take up to a minute.</div></div></div>
+<div class="overlay" id="busy" role="alert" aria-live="polite"><svg class="pulse" viewBox="0 0 180 60" aria-hidden="true"><path d="M0 30h46l12-22 20 44 14-30 8 8h80"/></svg><div><div class="b" id="busy-t" style="font-size:20px">Working…</div><div class="sm mut" style="margin-top:4px">This can take up to a minute.</div></div></div>
 <script>
 document.querySelectorAll('form[data-busy]').forEach(f=>f.addEventListener('submit',()=>{
   document.getElementById('busy-t').textContent=f.dataset.busy;document.getElementById('busy').classList.add('on')}));
 window.addEventListener('pageshow',e=>{if(e.persisted)document.getElementById('busy').classList.remove('on')});
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('[data-count]').forEach(el=>{
+  const t=parseFloat(el.dataset.count),dp=(el.dataset.count.split('.')[1]||'').length,t0=performance.now();
+  const node=[...el.childNodes].find(n=>n.nodeType===3);  /* animate only the number, keep child elements like the unit */
+  if(isNaN(t)||!node)return;(function f(n){const k=Math.min(1,(n-t0)/800),e=1-Math.pow(1-k,3);node.nodeValue=(t*e).toFixed(dp);if(k<1)requestAnimationFrame(f)})(t0)});
 if(location.search.includes('msg=')||location.search.includes('err=')){history.replaceState(null,'',location.pathname)}
 </script>
 </body></html>

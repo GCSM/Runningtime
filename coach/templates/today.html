@@ -1,41 +1,57 @@
 {% extends "base.html" %}{% from "_macros.html" import icon, status_icon, ring %}{% block body %}
-{% set p = d.profile %}{% set w = d.today_workout %}
-<h1 class="lt">Today</h1>
-<p class="sub" style="margin-bottom:10px">{{ d.today|fmt_date('%A, %B %-d') }}</p>
-<div style="margin:0 2px 16px"><span class="pill">🏁 {{ p.goal_label }} · {{ d.days_to_race }} day{{ 's' if d.days_to_race != 1 }} to go</span></div>
+{% set p = d.profile %}{% set w = d.today_workout %}{% set j = d.journey %}
+<div class="row rise" style="align-items:flex-end">
+  <div class="grow"><div class="kick">{{ d.today|fmt_date('%A · %b %-d') }}</div><h1 class="lt">Today</h1></div>
+  {% if d.streak >= 2 %}<span class="pill hot" style="margin-bottom:14px">🔥 {{ d.streak }} run streak</span>{% endif %}
+</div>
+
+<section class="card rise" style="margin-top:10px">
+  <div class="race-tick">
+    <div><div class="num n" data-count="{{ d.days_to_race }}">{{ d.days_to_race }}</div><div class="l">day{{ 's' if d.days_to_race != 1 }} to {{ p.goal_label }}</div></div>
+    <div class="right"><div class="b">{{ p.race_date|fmt_date('%a, %b %-d') }}</div>{% if p.goal_time_s %}<div class="sm mut">goal {{ p.goal_time_s|hms }}</div>{% endif %}</div>
+  </div>
+  {% if j %}{% set ns = namespace(acc=0) %}
+  <div class="journey" aria-label="Plan progress: week {{ j.current }} of {{ j.total }}">
+    {% for sg in j.segments %}<i class="ph-{{ sg.phase }} {{ 'done' if ns.acc < j.current }}" style="flex:{{ sg.weeks }}" title="{{ sg.phase }}"></i>{% set ns.acc = ns.acc + sg.weeks %}{% endfor %}
+    <span class="you" style="left:{{ j.pct }}%"></span>
+  </div>
+  <div class="jlegend"><span>Week <b>{{ j.current }}</b> of {{ j.total }}</span><span style="text-transform:capitalize"><b>{{ j.phase }}</b> phase</span></div>
+  {% endif %}
+</section>
 
 {% if not d.has_plan %}
-  <div class="card empty">
-    <div class="ico">🗓️</div><h3 style="font-size:20px">Let’s build your plan</h3>
+  <div class="card empty rise">
+    <div class="ico">🗓️</div><h3 style="font-size:22px;font-weight:800">Let’s build your plan</h3>
     <p class="mut" style="margin:6px 0 18px">Your coach will map out every week from today to race day{% if d.strava_connected %}, starting from your recent Strava runs{% endif %}.</p>
     <form method="post" action="/plan/generate" data-busy="Your coach is building your plan…"><button>Generate my plan</button></form>
   </div>
 {% elif w %}
-  <section class="hero t-{{ w.type }}">
-    <div class="kicker"><span class="pill">{{ w.type }}</span>{% if w.type == 'race' %}Race day{% else %}Today’s run{% endif %}</div>
-    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Done' if w.status == 'completed' else 'Partly done' }}</div>{% endif %}
+  <section class="hero t-{{ w.type }} rise {{ 'finished' if w.status == 'completed' }}" data-word="{{ w.type }}">
+    <div class="k"><span class="pill">{{ w.type }}</span>{% if w.type == 'race' %}Race day{% else %}Today’s run{% endif %}</div>
+    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Crushed it' if w.status == 'completed' else 'Partly done' }}</div>{% endif %}
     <div class="title">{{ w.title }}</div>
-    <div class="big">{{ w.distance_km|dist(units, false) }}<small>{{ units }}</small></div>
+    <div class="big num" data-count="{{ w.distance_km|dist(units, false) }}">{{ w.distance_km|dist(units, false) }}<small>{{ units }}</small></div>
     <div class="meta">{{ w.duration_min }} min{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}{% if w.actual_km %} · you ran {{ w.actual_km|dist(units) }}{% endif %}</div>
     {% if w.description %}<div class="desc">{{ w.description }}</div>{% endif %}
   </section>
 {% else %}
-  <section class="hero rest">
-    <div class="kicker mut">Rest day</div>
+  <section class="hero rest rise">
+    <div class="k mut">Rest day</div>
     <div class="title">Recover well 😌</div>
-    {% if d.next_workout %}<div class="meta mut">Next up: <b>{{ d.next_workout.title }}</b> on {{ d.next_workout.date|fmt_date }} · {{ d.next_workout.distance_km|dist(units) }}</div>{% endif %}
+    {% if d.next_workout %}<div class="meta mut" style="margin-top:6px">Next up: <b style="color:var(--fg)">{{ d.next_workout.title }}</b> · {{ d.next_workout.date|fmt_date }} · {{ d.next_workout.distance_km|dist(units) }}</div>{% endif %}
   </section>
 {% endif %}
 
 {% if d.has_plan %}
-<section class="card">
+<section class="card rise">
   <h2>This week{% if d.week %} · {{ d.week.phase }}{{ ' (recovery)' if d.week.recovery }}{% endif %}</h2>
   <div class="row">
     {{ ring(d.week_pct, d.week_actual_km|dist(units, false), 'of ' ~ (d.week.target_km|dist(units, false) if d.week else '–') ~ ' ' ~ units) }}
-    <div class="grow sm mut">
+    <div class="grow">
       {% set done = d.week_workouts|selectattr('status','in',['completed','partial'])|list|length %}
-      <div class="b" style="color:var(--fg);font-size:17px">{{ done }} of {{ d.week_workouts|length }} runs done</div>
-      {% if d.last_sync %}<div class="xs" style="margin-top:2px">Strava synced {{ d.last_sync|fmt_ts }}</div>{% endif %}
+      <div class="num" style="font-size:30px;line-height:1">{{ done }}<span class="mut" style="font-size:18px"> / {{ d.week_workouts|length }}</span></div>
+      <div class="xs mut b" style="letter-spacing:.08em;text-transform:uppercase;margin-top:4px">runs done</div>
+      {% if d.last_sync %}<div class="xs mut" style="margin-top:8px">Strava synced {{ d.last_sync|fmt_ts }}</div>{% endif %}
     </div>
   </div>
   <div class="strip">
@@ -48,7 +64,7 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card rise">
   <h2>Check in with your coach</h2>
   <form method="post" action="/review" data-busy="Your coach is reviewing your training…" class="stack">
     <textarea name="note" placeholder="How did it feel? Any niggles, travel, or schedule changes?" rows="3"></textarea>
@@ -58,11 +74,12 @@
 {% endif %}
 
 {% if d.log %}{% set m = d.log[0].message %}
-<section class="card"><h2>From your coach · {{ d.log[0].created_at[:10]|fmt_date('%b %-d') }}</h2>
-  <details class="more-t"><summary><div class="prose clamp">{{ m }}</div>{% if m|length > 260 %}<div class="sm b" style="color:var(--acc);margin-top:6px">Read more</div>{% endif %}</summary></details>
+<section class="card rise"><div class="coach"><div class="av">{{ icon('pulse') }}</div>
+  <div class="grow"><div class="xs mut b" style="letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px">Coach · {{ d.log[0].created_at[:10]|fmt_date('%b %-d') }}</div>
+  <details class="more-t"><summary><div class="bubble"><div class="prose clamp">{{ m }}</div>{% if m|length > 260 %}<div class="sm b" style="color:var(--hl);margin-top:6px">Read more</div>{% endif %}</div></summary></details></div></div>
 </section>{% endif %}
 
 {% if not d.strava_connected and settings.strava_configured %}
-<a class="card row" href="/me" style="color:inherit"><div class="grow"><div class="b">Connect Strava</div><div class="sm mut">Let your plan adapt to the runs you actually do.</div></div>{{ icon('chev') }}</a>
+<a class="card row rise" href="/me" style="color:inherit"><div class="grow"><div class="b">Connect Strava</div><div class="sm mut">Let your plan adapt to the runs you actually do.</div></div>{{ icon('chev') }}</a>
 {% endif %}
 {% endblock %}
