@@ -8,7 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Coach">
 <link rel="apple-touch-icon" href="/static/icon-180.png"><link rel="icon" href="/static/icon-192.png"><link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="stylesheet" href="/static/app.css?v=14">
+<script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<link rel="stylesheet" href="/static/app.css?v=15">
 </head><body data-auth="{{ 1 if user else '' }}">
 {% if flash %}<div class="toast" role="status">{{ flash }}</div>{% endif %}
 {% if error %}<div class="toast err" role="alert">{{ error }}</div>{% endif %}

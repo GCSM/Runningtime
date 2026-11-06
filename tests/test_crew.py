@@ -87,3 +87,12 @@ def test_login_required_and_me_links_to_crew(tmp_path):
     anon = TestClient(a.app)
     assert anon.get("/crew", follow_redirects=False).status_code in (303, 401)
     assert 'href="/crew"' in a.get("/me").text
+
+
+def test_theme_toggle_markup_and_css_overrides(tmp_path):
+    (a, *_), _ = build(tmp_path, 1)
+    me, base = a.get("/me").text, a.get("/crew").text
+    assert 'id="theme-seg"' in me and all(f'data-t="{t}"' in me for t in ("auto", "light", "dark"))
+    assert 'localStorage.getItem("theme")' in base                                       # applied before first paint (no flash)
+    css = a.get("/static/app.css").text
+    assert ':root[data-theme="dark"]{' in css and ':root:not([data-theme="light"])' in css
