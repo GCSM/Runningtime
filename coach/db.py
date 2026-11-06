@@ -284,6 +284,42 @@ class DB:
             r = c.execute("select data from activity_details where user_id=? and activity_id=?", (self.uid, activity_id)).fetchone()
         return json.loads(r["data"]) if r else None
 
+    # ---- chat ---------------------------------------------------------------------------------------
+    def add_chat_message(self, role: str, content: str, proposal: dict | None = None) -> int:
+        with self.conn() as c:
+            cur = c.execute(
+                "insert into chat_messages(user_id,created_at,role,content,proposal,proposal_status) values(?,?,?,?,?,?)",
+                (self.uid, _now(), role, content, json.dumps(proposal) if proposal else None, "pending" if proposal else None))
+            return cur.lastrowid
+
+    @staticmethod
+    def _chat_row(r) -> dict:
+        d = dict(r)
+        d["proposal"] = json.loads(d["proposal"]) if d["proposal"] else None
+        return d
+
+    def recent_chat(self, limit: int = 50) -> list[dict]:
+        with self.conn() as c:
+            rows = c.execute("select * from chat_messages where user_id=? order by id desc limit ?", (self.uid, limit)).fetchall()
+        return [self._chat_row(r) for r in reversed(rows)]
+
+    def get_chat_message(self, mid: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select * from chat_messages where id=? and user_id=?", (mid, self.uid)).fetchone()
+        return self._chat_row(r) if r else None
+
+    def set_proposal_status(self, mid: int, status: str) -> None:
+        with self.conn() as c:
+            c.execute("update chat_messages set proposal_status=? where id=? and user_id=?", (status, mid, self.uid))
+
+    def count_user_messages_since(self, iso: str) -> int:
+        with self.conn() as c:
+            return c.execute("select count(*) n from chat_messages where user_id=? and role='user' and created_at>=?", (self.uid, iso)).fetchone()["n"]
+
+    def clear_chat(self) -> None:
+        with self.conn() as c:
+            c.execute("delete from chat_messages where user_id=?", (self.uid,))
+
     # ---- run feedback ------------------------------------------------------------------------------
     def save_feedback(self, activity_id: int, feeling: str, rpe: int | None, note: str) -> None:
         with self.conn() as c:

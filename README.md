@@ -87,6 +87,15 @@ No Strava? The planner still works from your self-reported weekly mileage; you j
 The server's `ANTHROPIC_API_KEY` is shared by all users, so every plan or review is billed to you. Keep signups
 restricted accordingly.
 
+### Coach chat (cheapest model)
+
+The **Coach** tab answers quick questions ("what pace for easy runs?", "my knee hurts") using **Claude Haiku 5.5**
+at low effort, with a compact context (about 1k tokens) and short replies, so a message costs a fraction of a cent
+(estimate, not measured). It is capped per user (`CHAT_MESSAGES_PER_DAY`, default 40, rolling 24h). The model can
+*suggest* skipping, moving or swapping workouts, easing off, or a re-plan, but nothing changes until you tap **Apply**;
+every action is validated against your real plan, again when applied. Mentions of pain always produce an ease-off
+suggestion. Settings: `COACH_CHAT_MODEL`, `COACH_CHAT_EFFORT`, `CHAT_MESSAGES_PER_DAY`.
+
 ## Develop
 ```bash
 pip install -r requirements-dev.txt && pytest

@@ -11,6 +11,9 @@ class Settings:
     db_path: str = "data/coach.db"
     model: str = "claude-sonnet-5-5"
     effort: str = "medium"
+    chat_model: str = "claude-haiku-5-5"      # the cheapest current model: chat needs speed and low cost, not deep planning
+    chat_effort: str = "low"
+    chat_daily_limit: int = 40                 # messages per user per rolling 24 hours (bounds the cost)
     strava_client_id: str = ""
     strava_client_secret: str = ""
     strava_athlete_limit: int = 10   # your Strava app's athlete capacity; connecting beyond it is refused politely
@@ -28,6 +31,9 @@ class Settings:
             db_path=e("COACH_DB", "data/coach.db"),
             model=e("COACH_MODEL", "claude-sonnet-5-5"),
             effort=e("COACH_EFFORT", "medium"),
+            chat_model=e("COACH_CHAT_MODEL", "claude-haiku-5-5"),
+            chat_effort=e("COACH_CHAT_EFFORT", "low"),
+            chat_daily_limit=int(e("CHAT_MESSAGES_PER_DAY", "40") or 40),
             strava_client_id=e("STRAVA_CLIENT_ID", ""),
             strava_client_secret=e("STRAVA_CLIENT_SECRET", ""),
             strava_athlete_limit=int(e("STRAVA_ATHLETE_LIMIT", "10") or 10),

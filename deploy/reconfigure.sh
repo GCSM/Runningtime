@@ -58,7 +58,7 @@ if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
     die "The installed service file is out of date (it predates COACH_PORT, so it still listens on a fixed port). Run: bash deploy/install.sh"
 fi
 
-KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT COACH_PORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE
+KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT COACH_CHAT_MODEL CHAT_MESSAGES_PER_DAY COACH_PORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE
       STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET STRAVA_ATHLETE_LIMIT SYNC_INTERVAL_MIN AUTO_ADJUST FORWARDED_ALLOW_IPS)
 SECRETS=" ANTHROPIC_API_KEY STRAVA_CLIENT_SECRET INVITE_CODE "
 
@@ -83,6 +83,7 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
     ANTHROPIC_API_KEY)
       case "$v" in *[[:space:]]*) echo "ANTHROPIC_API_KEY contains a space — paste just the key"; return 1 ;; esac
       case "$v" in sk-ant-*) ;; *) echo "  note: Anthropic API keys normally start with sk-ant- (saving anyway; the test below will tell)" >&2 ;; esac ;;
+    CHAT_MESSAGES_PER_DAY) { [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ]; } || { echo "CHAT_MESSAGES_PER_DAY must be a whole number of 1 or more"; return 1; } ;;
     COACH_EFFORT) case "$v" in low|medium|high) ;; *) echo "COACH_EFFORT must be low, medium or high"; return 1 ;; esac ;;
     PUBLIC_URL) case "$v" in http://*|https://*) ;; *) echo "PUBLIC_URL must start with http:// or https://"; return 1 ;; esac ;;
     TZ) [ -f "/usr/share/zoneinfo/$v" ] || { echo "Unknown timezone '$v' (e.g. America/New_York)"; return 1; } ;;
@@ -137,6 +138,8 @@ else
   ask ANTHROPIC_API_KEY "Anthropic API key" secret
   ask COACH_MODEL "Model (e.g. claude-sonnet-5-5, claude-haiku-5-5)"
   ask COACH_EFFORT "Effort: low | medium | high (lower = cheaper)"
+  ask COACH_CHAT_MODEL "Chat model (cheapest is claude-haiku-5-5)"
+  ask CHAT_MESSAGES_PER_DAY "Chat messages per user per day (bounds cost)"
   ask COACH_PORT "Port the app listens on (80 = no :port needed in URLs)"
   ip="$(detect_ip)"
   ask PUBLIC_URL "Public URL (this container is ${ip:-unknown}; e.g. $(url_with_port "${ip:-HOST}" "$(env_port)") or your https:// address)"

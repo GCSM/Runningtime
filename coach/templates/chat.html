@@ -1,0 +1,70 @@
+{% extends "base.html" %}{% from "_macros.html" import icon %}{% block body %}
+<div class="kick rise">Ask anything</div><h1 class="lt rise">Coach</h1>
+<p class="sub rise">Quick answers and plan tweaks. Changes only happen when you tap Apply. <span id="remaining">{{ remaining }}</span> of {{ limit }} messages left today.</p>
+
+<div id="thread" class="thread rise" aria-live="polite">
+{% for m in messages %}
+  {% if m.role == 'user' %}<div class="msg me"><div class="bubble-me">{{ m.content }}</div></div>
+  {% else %}<div class="msg"><div class="av">{{ icon('pulse') }}</div><div class="grow">
+    <div class="bubble">{{ m.content }}</div>
+    {% if m.proposal %}
+    <div class="proposal {{ m.proposal_status }}">
+      <div class="xs b mut" style="letter-spacing:.08em;text-transform:uppercase">Suggested change{{ 's' if m.proposal.actions|length > 1 }}</div>
+      {% if m.proposal.summary %}<p class="sm" style="margin:4px 0 8px">{{ m.proposal.summary }}</p>{% endif %}
+      <ul>{% for a in m.proposal.actions %}<li>{{ a.label }}</li>{% endfor %}</ul>
+      {% if m.proposal_status == 'pending' %}
+      <div class="row" style="margin-top:10px">
+        <form method="post" action="/coach/proposal/{{ m.id }}/apply" class="grow"><button class="sm" style="width:100%">Apply</button></form>
+        <form method="post" action="/coach/proposal/{{ m.id }}/dismiss" class="grow"><button class="sec sm" style="width:100%">Dismiss</button></form></div>
+      {% else %}<span class="pill {{ 'hot' if m.proposal_status == 'applied' }}" style="margin-top:8px">{{ 'Applied' if m.proposal_status == 'applied' else 'Dismissed' }}</span>{% endif %}
+    </div>{% endif %}
+  </div></div>{% endif %}
+{% endfor %}
+</div>
+
+{% if not messages %}
+<div id="suggest" class="chips" style="margin:6px 2px 14px">
+  {% for q in ["What should I focus on this week?", "I feel really tired. Should I change anything?", "Can I move my next hard session?", "What pace should my easy runs be?"] %}
+  <button type="button" class="chip-btn" data-q="{{ q }}">{{ q }}</button>{% endfor %}
+</div>{% endif %}
+
+<form id="composer" class="composer" method="post" action="/coach/send">
+  <textarea name="message" rows="1" maxlength="600" placeholder="Ask your coach…" aria-label="Message your coach" required></textarea>
+  <button aria-label="Send" id="send">↑</button>
+</form>
+{% if messages %}<form method="post" action="/coach/clear" style="text-align:center;margin-top:14px" onsubmit="return confirm('Clear this conversation?')"><button class="sec sm" style="width:auto">Clear conversation</button></form>{% endif %}
+
+<script>
+(function(){
+  const thread=document.getElementById('thread'),form=document.getElementById('composer'),ta=form.querySelector('textarea'),btn=document.getElementById('send');
+  if(!window.fetch)return;
+  const el=(t,c,txt)=>{const e=document.createElement(t);if(c)e.className=c;if(txt!=null)e.textContent=txt;return e};
+  const scroll=()=>window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  function userBubble(t){const m=el('div','msg me');m.appendChild(el('div','bubble-me',t));thread.appendChild(m)}
+  function coachBubble(t,cls){const m=el('div','msg'),av=el('div','av');av.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13h4l2.5-6 4 11 2.5-5H22"/></svg>';
+    const g=el('div','grow'),b=el('div','bubble '+(cls||''));if(t==null){b.innerHTML='<span class="dots"><i></i><i></i><i></i></span>'}else b.textContent=t;g.appendChild(b);m.append(av,g);thread.appendChild(m);return {m,g,b}}
+  function proposalCard(g,p){
+    const d=el('div','proposal pending');d.appendChild(el('div','xs b mut','SUGGESTED CHANGE'+(p.actions.length>1?'S':'')));
+    if(p.summary)d.appendChild(el('p','sm',p.summary));const ul=el('ul');p.actions.forEach(a=>ul.appendChild(el('li',null,a.label)));d.appendChild(ul);
+    const r=el('div','row');[['apply','Apply',''],['dismiss','Dismiss','sec']].forEach(([k,l,c])=>{const f=el('form','grow');f.method='post';f.action='/coach/proposal/'+p.id+'/'+k;
+      const b=el('button',(c?c+' ':'')+'sm',l);b.style.width='100%';f.appendChild(b);r.appendChild(f)});d.appendChild(r);g.appendChild(d)}
+  async function send(text){
+    document.getElementById('suggest')?.remove();
+    userBubble(text);const t=coachBubble(null);scroll();btn.disabled=ta.disabled=true;
+    try{
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Requested-With':'fetch'},body:JSON.stringify({message:text})});
+      const j=await r.json();
+      if(!r.ok)throw new Error(j.error||'Something went wrong.');
+      t.b.textContent=j.reply;if(j.proposal)proposalCard(t.g,j.proposal);
+      document.getElementById('remaining').textContent=j.remaining;
+    }catch(e){t.b.textContent=e.message;t.b.classList.add('err')}
+    btn.disabled=ta.disabled=false;ta.value='';ta.style.height='';ta.focus();scroll();
+  }
+  form.addEventListener('submit',e=>{e.preventDefault();const v=ta.value.trim();if(v)send(v)});
+  ta.addEventListener('input',()=>{ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,140)+'px'});
+  ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!/iPhone|iPad|Android/i.test(navigator.userAgent)){e.preventDefault();form.requestSubmit()}});
+  document.querySelectorAll('.chip-btn').forEach(b=>b.addEventListener('click',()=>send(b.dataset.q)));
+  if(thread.children.length)window.scrollTo(0,document.body.scrollHeight);
+})();
+</script>
+{% endblock %}

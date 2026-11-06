@@ -100,8 +100,9 @@ def test_unset_removes_a_value(box):
 
 
 def test_interactive_walkthrough_keeps_blank_answers(box):
-    # Order of prompts: key, model, effort, port, url, tz, signups, invite, strava id, strava secret, athlete limit, interval, auto-adjust
-    answers = ["", "", "high", "", "", "", "false", "new", "", "", "", "", ""]
+    # Order of prompts: key, model, effort, chat model, chat limit, port, url, tz, signups, invite, strava id, strava secret,
+    # athlete limit, interval, auto-adjust
+    answers = ["", "", "high", "", "", "", "", "", "false", "new", "", "", "", "", ""]
     r = run(box, stdin="\n".join(answers) + "\n")
     assert r.returncode == 0, r.stderr
     assert val(box, "COACH_EFFORT") == "high" and val(box, "ALLOW_SIGNUPS") == "false"
@@ -265,3 +266,11 @@ def test_strava_athlete_limit_is_validated_and_saved(box):
     r = run(box, "STRAVA_ATHLETE_LIMIT=10", "STRAVA_CLIENT_ID=12345")
     assert r.returncode == 0 and val(box, "STRAVA_ATHLETE_LIMIT") == "10" and val(box, "STRAVA_CLIENT_ID") == "12345"
     assert "STRAVA_ATHLETE_LIMIT" in run(box, "--show").stdout
+
+
+def test_chat_settings_are_validated_and_saved(box):
+    for bad in ("CHAT_MESSAGES_PER_DAY=0", "CHAT_MESSAGES_PER_DAY=many", "CHAT_MESSAGES_PER_DAY=-5"):
+        assert run(box, bad).returncode != 0, bad
+    assert val(box, "CHAT_MESSAGES_PER_DAY") is None
+    r = run(box, "CHAT_MESSAGES_PER_DAY=25", "COACH_CHAT_MODEL=claude-haiku-5-5")
+    assert r.returncode == 0 and val(box, "CHAT_MESSAGES_PER_DAY") == "25" and val(box, "COACH_CHAT_MODEL") == "claude-haiku-5-5"

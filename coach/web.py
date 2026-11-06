@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import auth
+from .chat import ChatCoach, ChatService
 from .config import Settings
 from .errors import explain
 from .db import DB
@@ -46,10 +47,11 @@ def parse_hms(s: str) -> int | None:
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
 
 
-def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None) -> FastAPI:
+def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
     coach = coach or Coach(settings.model, effort=settings.effort)
+    chat_llm = chat or ChatCoach(settings.chat_model, settings.chat_effort)
     strava_factory = strava_factory or (lambda udb: StravaClient(settings, udb))
 
     def service_for(uid: int) -> CoachService:
@@ -462,6 +464,66 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def calendar_disable(request: Request):
         request.state.svc.disable_calendar()
         return back("/me", "Calendar link turned off. Anything subscribed to it will stop updating.")
+
+    # ---- coach chat (cheapest model; proposals need a tap) --------------------------------------------------
+    def chat_for(request: Request) -> ChatService:
+        return ChatService(request.state.svc, chat_llm, settings.chat_daily_limit)
+
+    @app.get("/coach")
+    def coach_page(request: Request):
+        cs = chat_for(request)
+        p = request.state.svc.db.get_profile()
+        return render(request, "chat.html", messages=request.state.svc.db.recent_chat(60), remaining=max(0, cs.limit - cs.used_today()),
+                      limit=cs.limit, has_profile=bool(p))
+
+    @app.post("/api/chat")
+    async def api_chat(request: Request):
+        try:
+            body = await request.json()
+            text = str(body.get("message", ""))
+        except Exception:  # noqa: BLE001
+            return JSONResponse({"error": "Bad request."}, status_code=400)
+        cs = chat_for(request)
+        try:
+            out = await asyncio.to_thread(cs.send, text)
+            return JSONResponse(out, headers={"Cache-Control": "no-store"})
+        except UserError as e:
+            return JSONResponse({"error": str(e)}, status_code=429 if "chat messages" in str(e) else 400)
+        except Exception as e:  # noqa: BLE001
+            log.exception("chat failed")
+            return JSONResponse({"error": explain(e) or f"Something went wrong: {e}"}, status_code=502)
+
+    @app.post("/coach/send")
+    def coach_send(request: Request, message: str = Form("")):
+        try:
+            chat_for(request).send(message)
+            return RedirectResponse("/coach", 303)
+        except UserError as e:
+            return back("/coach", err=str(e))
+        except Exception as e:  # noqa: BLE001
+            log.exception("chat failed")
+            return back("/coach", err=explain(e) or f"Something went wrong: {e}")
+
+    @app.post("/coach/proposal/{mid}/apply")
+    def proposal_apply(request: Request, mid: int):
+        try:
+            res = chat_for(request).apply(mid)
+        except UserError as e:
+            return back("/coach", err=str(e))
+        if res["replan"]:
+            svc, uid, note = request.state.svc, request.state.user["id"], res["replan"]
+            start_job(uid, "review", "Your coach is re-planning", lambda: svc.review(note), "Plan reviewed and updated.")
+        msg = "Done: " + "; ".join(res["done"]) + "." + ("  Heads-up: " + " ".join(res["problems"]) if res["problems"] else "")
+        return back("/coach", msg)
+
+    @app.post("/coach/proposal/{mid}/dismiss")
+    def proposal_dismiss(request: Request, mid: int):
+        return do(lambda: chat_for(request).dismiss(mid), "/coach", "Dismissed.")
+
+    @app.post("/coach/clear")
+    def coach_clear(request: Request):
+        request.state.svc.db.clear_chat()
+        return back("/coach", "Chat cleared.")
 
     @app.get("/api/job")
     def api_job(request: Request):

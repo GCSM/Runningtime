@@ -163,6 +163,23 @@ details[open]>summary .chev{transform:rotate(90deg)}
 .legend{display:flex;gap:16px;font-size:13px;color:var(--mut);margin-top:12px}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 
+/* chat */
+.thread{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
+.msg{display:flex;gap:10px;align-items:flex-start}.msg.me{justify-content:flex-end}
+.msg .av{width:32px;height:32px;border-radius:11px;flex:none;background:linear-gradient(135deg,var(--hl),var(--hl2));display:grid;place-items:center;color:var(--btnfg)}.msg .av svg{width:18px;height:18px}
+.bubble-me{background:var(--btn);color:var(--btnfg);border-radius:18px 18px 4px 18px;padding:10px 14px;max-width:82%;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg .bubble{background:var(--card);border:1px solid var(--cardb);border-radius:4px 18px 18px 18px;padding:10px 14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.err{border-color:var(--bad);color:var(--bad)}
+.proposal{margin-top:8px;border:1px solid var(--hl);border-radius:16px;padding:12px 14px;background:color-mix(in srgb,var(--hl) 8%,transparent)}
+.proposal.applied,.proposal.dismissed{border-color:var(--line);background:var(--fill);opacity:.8}.proposal ul{margin:0 0 0 18px;padding:0;font-size:15px;line-height:1.5}
+.dots{display:inline-flex;gap:4px}.dots i{width:7px;height:7px;border-radius:50%;background:var(--mut);animation:bnc 1s infinite}.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bnc{50%{transform:translateY(-4px);opacity:.5}}
+.composer{position:sticky;bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 22px);display:flex;gap:8px;align-items:flex-end;padding:8px;border-radius:24px;
+  background:color-mix(in srgb,var(--bg) 70%,transparent);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--cardb)}
+.composer textarea{min-height:44px;max-height:140px;border-radius:18px;resize:none;padding:11px 14px}
+.composer button{width:46px;min-width:46px;height:46px;min-height:46px;border-radius:50%;padding:0;font-size:22px}
+.chip-btn{width:auto;min-height:44px;padding:10px 16px;border-radius:99px;font:600 15px/1.2 inherit;font-family:inherit;background:var(--fill);color:var(--fg);box-shadow:none;letter-spacing:0;text-align:left}
+
 /* fitness, heatmap, milestones, race week */
 .spark{width:120px;height:auto;flex:none;margin-left:auto}
 .preds{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px;text-align:center}
