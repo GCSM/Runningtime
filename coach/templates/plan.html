@@ -27,7 +27,7 @@
       <div class="mini"><i style="width:{{ (100 * wk.planned_km / mx)|round }}%"></i></div></div>
     <div class="right"><div class="num" style="font-size:22px">{{ wk.planned_km|dist(units, false) }}<span class="mut" style="font-size:12px;font-style:normal"> {{ units }}</span></div><div class="xs mut">{{ wk.workouts|length }} runs</div></div>{{ icon('chev') }}
   </summary>
-  {% for w in wk.workouts %}{{ workout_row(w, units, today) }}{% endfor %}
+  {% for w in wk.workouts %}{{ workout_row(w, units, today, race_date) }}{% endfor %}
 </details>
 {% endfor %}
 </div>

@@ -4,6 +4,10 @@ from __future__ import annotations
 import anthropic
 
 
+class UserError(Exception):
+    """A problem the user can fix; shown verbatim in the UI."""
+
+
 class CoachUnavailable(RuntimeError):
     """The coach can't be used as configured (e.g. no API key). The message is shown to the user as-is."""
 

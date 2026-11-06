@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% from "_macros.html" import icon, feedback_form %}{% block body %}
+<a href="javascript:history.length > 1 ? history.back() : location.assign('/')" class="sm b" style="display:inline-block;margin:6px 2px 0;color:var(--mut)">← Back</a>
+<div class="kick rise">{{ r.date|fmt_date('%A · %b %-d') }}{% if r.start_time %} · {{ r.start_time }}{% endif %}</div>
+<h1 class="lt rise" style="font-size:34px">{{ r.name }}</h1>
+<div class="rise" style="margin:0 2px 14px">{% if r.workout %}<span class="pill t t-{{ r.workout.type }}">{{ r.workout.type }}</span>{% else %}<span class="pill">unplanned run</span>{% endif %}</div>
+
+<div class="stats rise" style="grid-template-columns:repeat(3,1fr)">
+  <div class="stat"><b class="num" style="font-size:30px">{{ r.km|dist(units, false) }}</b><span>{{ units }}</span></div>
+  <div class="stat"><b class="num" style="font-size:30px">{{ r.moving_s|dur }}</b><span>time</span></div>
+  <div class="stat"><b class="num" style="font-size:30px">{{ (r.pace_s_km|pace(units)).split('/')[0] }}</b><span>/{{ units }}</span></div>
+</div>
+{% if r.avg_hr or r.elevation_m is not none %}
+<div class="card rise row" style="justify-content:space-around;text-align:center">
+  {% if r.avg_hr %}<div><b class="num" style="font-size:24px">{{ r.avg_hr|round|int }}</b><div class="xs mut b">AVG HR</div></div>{% endif %}
+  {% if r.max_hr %}<div><b class="num" style="font-size:24px">{{ r.max_hr|round|int }}</b><div class="xs mut b">MAX HR</div></div>{% endif %}
+  {% if r.elevation_m is not none %}<div><b class="num" style="font-size:24px">{{ r.elevation_m|round|int }}</b><div class="xs mut b">ELEVATION (m)</div></div>{% endif %}
+</div>{% endif %}
+
+{% if r.detail_note %}<div class="card rise"><p class="sm mut">{{ r.detail_note }}</p></div>{% endif %}
+
+{% if r.route %}
+<section class="card rise"><h2>Route <span style="text-transform:none;letter-spacing:0;font-weight:500">· drawn on your server, never sent anywhere</span></h2>
+  <svg class="route" viewBox="0 0 {{ r.route.width }} {{ r.route.height }}" role="img" aria-label="Map of the route">
+    <defs><linearGradient id="rt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--hl)"/><stop offset="1" style="stop-color:var(--hl2)"/></linearGradient></defs>
+    <path d="{{ r.route.d }}" fill="none" stroke="url(#rt)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="{{ r.route.start[0] }}" cy="{{ r.route.start[1] }}" r="6" class="rt-start"/><circle cx="{{ r.route.end[0] }}" cy="{{ r.route.end[1] }}" r="6" class="rt-end"/>
+  </svg>
+  <div class="legend"><span><i style="background:var(--ok);border-radius:50%"></i>Start</span><span><i style="background:var(--bad);border-radius:50%"></i>Finish</span></div>
+</section>{% endif %}
+
+{% if r.splits %}
+<section class="card rise"><h2>Splits</h2>
+  {% if r.band %}<p class="xs mut" style="margin:-4px 0 10px">Target range for this run: {{ r.band[0]|pace(units) }} – {{ r.band[1]|pace(units) }}. Splits outside it are dimmed.</p>{% endif %}
+  <div class="splits" role="table">
+  {% for s in r.splits %}
+    <div class="split {{ 'out' if s.in_band is false }}" role="row">
+      <span class="n">{{ s.n }}{% if s.partial %}<small>{{ s.km|round(1) }}</small>{% endif %}</span>
+      <span class="bar"><i style="width:{{ s.bar }}%" class="{{ 'fast' if s.fastest }} {{ 'slow' if s.slowest }}"></i></span>
+      <span class="p">{{ s.pace|pace(units) }}</span>
+      {% if s.hr %}<span class="h">{{ s.hr|round|int }}<small>♥</small></span>{% endif %}
+    </div>
+  {% endfor %}</div>
+</section>{% endif %}
+
+{% if r.plan %}
+<section class="card rise"><h2>Planned vs actual</h2>
+  <p class="b" style="font-size:18px">{{ r.plan.title }} <span class="mut sm" style="font-weight:500">({{ r.plan.type }})</span></p>
+  <table class="sm" style="width:100%;margin-top:8px"><tr><td class="mut">Planned</td><td style="text-align:right">{{ r.plan.planned_km|dist(units) }}{% if r.plan.planned_min %} · {{ r.plan.planned_min }} min{% endif %}</td></tr>
+    <tr><td class="mut">You ran</td><td style="text-align:right" class="b">{{ r.km|dist(units) }} · {{ (r.moving_s / 60)|round|int }} min</td></tr>
+    {% if r.plan.pace_guidance %}<tr><td class="mut">Pace guide</td><td style="text-align:right">{{ r.plan.pace_guidance }}</td></tr>{% endif %}</table>
+  {% if r.plan.verdict %}<p class="b" style="margin-top:12px">{{ r.plan.verdict }}</p>{% endif %}
+  {% for n in r.plan.notes %}<p class="sm mut" style="margin-top:6px">{{ n }}</p>{% endfor %}
+</section>{% endif %}
+
+<section class="card rise" id="feedback"><h2>How did it feel?</h2>
+  {{ feedback_form(r.id, r.feedback, '/run/' ~ r.id) }}
+</section>
+{% endblock %}

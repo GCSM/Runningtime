@@ -10,6 +10,10 @@ from . import adherence
 from . import knowledge as K
 from .config import Settings
 from .db import DB
+from .actions import ActionsMixin
+from .errors import UserError  # noqa: F401  (re-exported for callers)
+from .runview import build_run_view
+from .strava import StravaError
 from .models import DAYS, Profile
 from .plancheck import mentions_pain, sanitize
 from .skeleton import DEFAULT_EASY_PACE_S_KM, VolumeOutlook, Week, build_skeleton_info, monday
@@ -34,11 +38,7 @@ class PlanInputs:
         return K.pace_text(self.paces_raw) if self.paces_raw else None
 
 
-class UserError(Exception):
-    """A problem the user can fix; shown verbatim in the UI."""
-
-
-class CoachService:
+class CoachService(ActionsMixin):
     def __init__(self, db: DB, settings: Settings, coach, strava, clock=None):
         self.db, self.settings, self.coach, self.strava = db, settings, coach, strava
         self.today = clock or settings.today
@@ -63,7 +63,10 @@ class CoachService:
         if not ws:
             return
         acts = self.db.activities_since(date.fromisoformat(ws[0]["date"]))
+        skipped = {w["id"] for w in ws if w["status"] == "skipped"}
         for wid, m in adherence.match_workouts(ws, acts, today).items():
+            if wid in skipped and m["status"] in ("planned", "missed"):
+                continue                       # an athlete's deliberate skip stays a skip (unless they ran anyway)
             self.db.update_workout_status(wid, m["status"], m["actual_km"], m["activity_id"])
 
     # ---- plan generation / review ------------------------------------------
@@ -121,7 +124,8 @@ class CoachService:
         totals = adherence.weekly_km(acts)
         weeks, pace, o = inp.weeks, inp.pace, inp.outlook
         done_runs = {w["date"] for w in self.db.get_workouts(today, today) if w["status"] in ("completed", "partial")}
-        blocked = sorted(done_runs | ({today.isoformat()} if any(a["date"] == today.isoformat() for a in acts) else set()))
+        skipped_days = {w["date"] for w in self.db.get_workouts(today) if w["status"] == "skipped"}     # the athlete chose not to run then
+        blocked = sorted(done_runs | skipped_days | ({today.isoformat()} if any(a["date"] == today.isoformat() for a in acts) else set()))
         last_run = max((date.fromisoformat(a["date"]) for a in acts), default=None)
         days_off = (today - last_run).days if last_run else None
         phases = {w.phase for w in weeks} | ({"taper"} if any(w.phase == "race" for w in weeks) else set())
@@ -173,7 +177,8 @@ class CoachService:
             profile=p, weeks=inp.weeks, today=today, blocked_dates=set(ctx["blocked_dates"]),
             done_km_by_week={monday(today): totals.get(monday(today), 0.0)}, pace_s_km=inp.pace,
             level=p.experience, longest_recent_km=longest,
-            suppress_quality_until=(today + timedelta(days=7)) if mentions_pain(note) else None,
+            suppress_quality_until=max([d for d in ((today + timedelta(days=7)) if mentions_pain(note) else None, self.pain_until()) if d] or [None],
+                                       default=None),
         )
         out = self.coach.plan(ctx, mode=mode)
         workouts, notes = sanitize(out["workouts"], **kwargs)
@@ -220,6 +225,13 @@ class CoachService:
             ctx["athlete_note"] = note
             ctx["last_4_weeks_review"] = self._review_block(acts)
             ctx["unplanned_runs_last_14_days"] = self._extra_runs(acts)
+            ctx["fatigue_signal"] = self.fatigue_signal()          # ≥2 of the last 4 easy/long runs felt hard (RPE ≥7)
+            ctx["athlete_changes_last_14_days"] = [
+                {"date": w["date"], "title": w["title"], "change": "skipped" if w["status"] == "skipped" else f"moved from {w['moved_from']}",
+                 **({"reason": w["note"]} if w["status"] == "skipped" and w["note"] else {})}
+                for w in self.db.get_workouts(today - timedelta(days=14))     # no upper bound: a move to a distant date is still a decision
+                if w["status"] == "skipped" or w["moved_from"]
+            ]
             ctx["current_upcoming_plan"] = [
                 {k: w[k] for k in ("date", "type", "title", "distance_km")} for w in self.db.get_workouts(today, today + timedelta(days=13))
                 if w["status"] == "planned"
@@ -232,6 +244,7 @@ class CoachService:
     def _review_block(self, acts: list[dict]) -> list[dict]:
         today = self.today()
         by_id = {a["id"]: a for a in acts}
+        fb = self.db.feedback_map()
         out = []
         for i in range(4, -1, -1):
             ws = monday(today) - timedelta(weeks=i)
@@ -246,6 +259,9 @@ class CoachService:
                     "actual_km": w["actual_km"],
                     "avg_pace_s_per_km": round(a["moving_s"] / (a["distance_m"] / 1000)) if a else None,
                     "avg_hr": a["avg_hr"] if a else None,
+                    **({"felt": fb[w["activity_id"]]["feeling"], "rpe": fb[w["activity_id"]]["rpe"], "athlete_note": fb[w["activity_id"]]["note"][:200]}
+                       if w["activity_id"] in fb else {}),
+                    **({"athlete_skipped_because": w["note"]} if w["status"] == "skipped" else {}),
                 })
             out.append({
                 "week_start": ws.isoformat(), "planned_km": round(sum(w["distance_km"] or 0 for w in planned), 1),
@@ -275,6 +291,45 @@ class CoachService:
         ):
             self.review(sync=False)
 
+    # ---- run detail --------------------------------------------------------------------------------------
+    def _activity_detail(self, activity_id: int) -> tuple[dict | None, str | None]:
+        cached = self.db.get_activity_detail(activity_id)
+        if cached:
+            return cached, None
+        if not getattr(self.strava, "connected", False):
+            return None, "Connect Strava to see this run's route and kilometre splits."
+        if not hasattr(self.strava, "fetch_activity"):
+            return None, None
+        try:
+            detail = self.strava.fetch_activity(activity_id)
+        except StravaError as e:
+            return None, str(e)
+        self.db.save_activity_detail(activity_id, detail)
+        return detail, None
+
+    def run_detail(self, activity_id: int) -> dict | None:
+        act = self.db.get_activity(activity_id)            # scoped to this user: another user's id is simply "not found"
+        if not act:
+            return None
+        workout = next((w for w in self.db.get_workouts() if w["activity_id"] == activity_id), None)
+        detail, note = self._activity_detail(activity_id)
+        paces = (self.db.kv_get("volume_outlook") or {}).get("paces_s")
+        view = build_run_view(act, workout, detail, paces)
+        view["feedback"] = self.db.get_feedback(activity_id)
+        view["detail_note"] = note
+        return view
+
+    def recent_runs(self, limit: int = 12) -> list[dict]:
+        fb = self.db.feedback_map()
+        out = []
+        for a in reversed(self.db.activities_since(self.today() - timedelta(days=90))):
+            km = a["distance_m"] / 1000
+            out.append({"id": a["id"], "date": a["date"], "name": a["name"] or "Run", "km": km,
+                        "pace_s_km": a["moving_s"] / km if km else None, "feeling": (fb.get(a["id"]) or {}).get("feeling")})
+            if len(out) >= limit:
+                break
+        return out
+
     # ---- views -----------------------------------------------------------
     def dashboard(self) -> dict:
         today = self.today()
@@ -303,17 +358,22 @@ class CoachService:
         data["has_plan"] = bool(self.db.get_workouts())
         data["next_workout"] = next((w for w in self.db.get_workouts(today + timedelta(days=1)) if w["status"] == "planned"), None)
         data["streak"] = self.streak()
+        data["pending_feedback"] = self.pending_feedback()
+        tw = data["today_workout"]
+        data["today_move_options"] = (self.move_options(tw["id"]) if tw and tw["status"] == "planned" and tw["type"] != "race" else [])
+        data["pain_until"] = self.pain_until()
         data["journey"] = self.journey()
         return data
 
     def streak(self) -> int:
         """Consecutive most-recent scheduled runs that were done (fully or partly), stopping at the first miss."""
-        past = [w for w in self.db.get_workouts(end=self.today()) if w["status"] in ("completed", "partial", "missed")]
+        past = [w for w in self.db.get_workouts(end=self.today()) if w["status"] in ("completed", "partial", "missed", "skipped")]
         n = 0
         for w in reversed(past):
             if w["status"] == "missed":
                 break
-            n += 1
+            if w["status"] != "skipped":      # a deliberate skip neither extends nor breaks the streak
+                n += 1
         return n
 
     def journey(self) -> dict | None:

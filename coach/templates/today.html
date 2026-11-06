@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_macros.html" import icon, status_icon, ring %}{% block body %}
+{% extends "base.html" %}{% from "_macros.html" import icon, status_icon, ring, feedback_form %}{% block body %}
 {% set p = d.profile %}{% set w = d.today_workout %}{% set j = d.journey %}
 <div class="row rise" style="align-items:flex-end">
   <div class="grow"><div class="kick">{{ d.today|fmt_date('%A · %b %-d') }}</div><h1 class="lt">Today</h1></div>
@@ -28,11 +28,26 @@
 {% elif w %}
   <section class="hero t-{{ w.type }} rise {{ 'finished' if w.status == 'completed' }}" data-word="{{ w.type }}">
     <div class="k"><span class="pill">{{ w.type }}</span>{% if w.type == 'race' %}Race day{% else %}Today’s run{% endif %}</div>
-    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Crushed it' if w.status == 'completed' else 'Partly done' }}</div>{% endif %}
+    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Crushed it' if w.status == 'completed' else 'Partly done' }}</div>
+    {% elif w.status == 'skipped' %}<div class="done" style="background:rgba(0,0,0,.35);color:#fff">Skipped</div>{% endif %}
     <div class="title">{{ w.title }}</div>
     <div class="big num" data-count="{{ w.distance_km|dist(units, false) }}">{{ w.distance_km|dist(units, false) }}<small>{{ units }}</small></div>
     <div class="meta">{{ w.duration_min }} min{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}{% if w.actual_km %} · you ran {{ w.actual_km|dist(units) }}{% endif %}</div>
     {% if w.description %}<div class="desc">{{ w.description }}</div>{% endif %}
+    {% if w.activity_id %}<a class="hero-link" href="/run/{{ w.activity_id }}">Run details →</a>{% endif %}
+    {% if w.status == 'planned' and w.type != 'race' %}
+    <details class="hero-more"><summary>Can’t run today?</summary>
+      <form method="post" action="/workout/{{ w.id }}/skip" class="stack"><input type="hidden" name="next" value="/">
+        <input type="text" name="reason" placeholder="Why? (optional)" maxlength="200" aria-label="Reason for skipping"><button class="sec">Skip today</button></form>
+      {% if d.today_move_options %}
+      <form method="post" action="/workout/{{ w.id }}/move" class="stack"><input type="hidden" name="next" value="/">
+        <select name="to_date" aria-label="Move to">{% for o in d.today_move_options %}<option value="{{ o.date }}">{{ o.label }}{{ '' if o.usual else ' · not a usual day' }}{{ ' · swap with ' ~ o.swap_title if o.swap_with }}</option>{% endfor %}</select>
+        <button class="sec">Move it</button></form>
+      {% endif %}
+    </details>
+    {% elif w.status == 'skipped' %}
+    <form method="post" action="/workout/{{ w.id }}/restore" style="margin-top:14px"><input type="hidden" name="next" value="/"><button class="sec">Undo skip</button></form>
+    {% endif %}
   </section>
 {% else %}
   <section class="hero rest rise">
@@ -40,6 +55,13 @@
     <div class="title">Recover well 😌</div>
     {% if d.next_workout %}<div class="meta mut" style="margin-top:6px">Next up: <b style="color:var(--fg)">{{ d.next_workout.title }}</b> · {{ d.next_workout.date|fmt_date }} · {{ d.next_workout.distance_km|dist(units) }}</div>{% endif %}
   </section>
+{% endif %}
+
+{% if d.pending_feedback %}{% set pf = d.pending_feedback %}
+<section class="card rise" id="feedback"><h2>How did it feel?</h2>
+  <p class="sm mut" style="margin:-4px 0 12px">{{ pf.activity.name or 'Run' }} · {{ (pf.activity.distance_m / 1000)|dist(units) }} · {{ pf.activity.date|fmt_date }}</p>
+  {{ feedback_form(pf.activity.id, none, "/") }}
+</section>
 {% endif %}
 
 {% if d.has_plan %}

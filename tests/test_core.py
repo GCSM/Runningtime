@@ -105,12 +105,24 @@ class FakeStrava:
 
     def __init__(self):
         self.runs = []
+        self.details = {}          # activity id -> trimmed detail dict
+        self.fetches = []          # activity ids requested, to prove caching
+        self.fetch_error = None
 
     def athlete_name(self):
         return "Test"
 
     def fetch_runs(self, after_ts):
         return self.runs
+
+    def fetch_activity(self, aid):
+        self.fetches.append(aid)
+        if self.fetch_error:
+            raise self.fetch_error
+        if aid not in self.details:
+            from coach.strava import StravaError
+            raise StravaError("Strava has no details for this run any more (it may have been deleted or made private).")
+        return self.details[aid]
 
 
 @pytest.fixture

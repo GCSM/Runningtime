@@ -33,12 +33,31 @@ create table if not exists activities(
     distance_m real not null, moving_s integer not null, avg_hr real, elevation_m real, sport text,
     primary key(user_id, id));
 create index if not exists activities_user_date on activities(user_id, date);
+create table if not exists feedback(
+    user_id integer not null, activity_id integer not null, feeling text not null, rpe integer, note text not null default '',
+    created_at text not null, primary key(user_id, activity_id));
+create table if not exists chat_messages(
+    id integer primary key autoincrement, user_id integer not null, created_at text not null, role text not null,
+    content text not null, proposal text, proposal_status text);
+create index if not exists chat_user on chat_messages(user_id, id);
+create table if not exists activity_details(
+    user_id integer not null, activity_id integer not null, data text not null, fetched_at text not null,
+    primary key(user_id, activity_id));
+create table if not exists kudos(
+    from_user integer not null, to_user integer not null, week_start text not null, emoji text not null, created_at text not null,
+    primary key(from_user, to_user, week_start));
 create table if not exists coach_log(
     id integer primary key autoincrement, user_id integer not null,
     created_at text not null, kind text not null, message text not null);
 """
 
-USER_TABLES = ("kv", "profile", "weeks", "workouts", "activities", "coach_log")
+USER_TABLES = ("kv", "profile", "weeks", "workouts", "activities", "coach_log", "feedback", "chat_messages", "activity_details")
+
+# Columns added after the first release: (table, column, definition). Applied to existing databases on startup.
+MIGRATIONS = [
+    ("workouts", "note", "text not null default ''"),
+    ("workouts", "moved_from", "text"),
+]
 
 
 class DB:
@@ -52,6 +71,10 @@ class DB:
                 Path(path).parent.mkdir(parents=True, exist_ok=True)
             with self.conn() as c:
                 c.executescript(SCHEMA)
+                for table, col, definition in MIGRATIONS:
+                    have = {r["name"] for r in c.execute(f"pragma table_info({table})")}
+                    if col not in have:
+                        c.execute(f"alter table {table} add column {col} {definition}")
 
     def for_user(self, uid: int) -> "DB":
         b = copy.copy(self)
@@ -112,6 +135,7 @@ class DB:
         with self.conn() as c:
             for t in USER_TABLES:
                 c.execute(f"delete from {t} where user_id=?", (uid,))
+            c.execute("delete from kudos where from_user=? or to_user=?", (uid, uid))
             c.execute("delete from users where id=?", (uid,))  # sessions cascade
 
     def strava_user_ids(self) -> list[int]:
@@ -219,6 +243,59 @@ class DB:
                 "update workouts set status=?, actual_km=?, activity_id=? where id=? and user_id=?",
                 (status, actual_km, activity_id, wid, self.uid),
             )
+
+    # ---- single-workout access and edits -----------------------------------------------------------
+    WORKOUT_EDITABLE = {"date", "week_start", "type", "title", "description", "distance_km", "duration_min", "pace_guidance",
+                        "status", "note", "moved_from", "actual_km", "activity_id"}
+
+    def get_workout(self, wid: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select * from workouts where id=? and user_id=?", (wid, self.uid)).fetchone()
+        return dict(r) if r else None
+
+    def update_workout(self, wid: int, **fields) -> None:
+        bad = set(fields) - self.WORKOUT_EDITABLE
+        if bad or not fields:
+            raise ValueError(f"cannot update {sorted(bad) or 'nothing'}")
+        sets = ", ".join(f"{k}=?" for k in fields)
+        with self.conn() as c:
+            c.execute(f"update workouts set {sets} where id=? and user_id=?", (*fields.values(), wid, self.uid))
+
+    def get_activity(self, activity_id: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select * from activities where user_id=? and id=?", (self.uid, activity_id)).fetchone()
+        return dict(r) if r else None
+
+    # ---- cached Strava detail for the run page -------------------------------------------------------
+    def save_activity_detail(self, activity_id: int, data: dict) -> None:
+        with self.conn() as c:
+            c.execute(
+                """insert into activity_details(user_id,activity_id,data,fetched_at) values(?,?,?,?)
+                   on conflict(user_id,activity_id) do update set data=excluded.data, fetched_at=excluded.fetched_at""",
+                (self.uid, activity_id, json.dumps(data), _now()))
+
+    def get_activity_detail(self, activity_id: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select data from activity_details where user_id=? and activity_id=?", (self.uid, activity_id)).fetchone()
+        return json.loads(r["data"]) if r else None
+
+    # ---- run feedback ------------------------------------------------------------------------------
+    def save_feedback(self, activity_id: int, feeling: str, rpe: int | None, note: str) -> None:
+        with self.conn() as c:
+            c.execute(
+                """insert into feedback(user_id,activity_id,feeling,rpe,note,created_at) values(?,?,?,?,?,?)
+                   on conflict(user_id,activity_id) do update set feeling=excluded.feeling, rpe=excluded.rpe,
+                   note=excluded.note, created_at=excluded.created_at""",
+                (self.uid, activity_id, feeling, rpe, note, _now()))
+
+    def get_feedback(self, activity_id: int) -> dict | None:
+        with self.conn() as c:
+            r = c.execute("select * from feedback where user_id=? and activity_id=?", (self.uid, activity_id)).fetchone()
+        return dict(r) if r else None
+
+    def feedback_map(self) -> dict[int, dict]:
+        with self.conn() as c:
+            return {r["activity_id"]: dict(r) for r in c.execute("select * from feedback where user_id=?", (self.uid,))}
 
     # ---- coach log -------------------------------------------------------
     def log(self, kind: str, message: str) -> None:

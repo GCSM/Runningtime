@@ -167,7 +167,11 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         t = datetime.fromisoformat(iso).astimezone(ZoneInfo(settings.timezone))
         return t.strftime("%b %-d, %-I:%M %p")
 
-    templates.env.filters.update(dist=dist, pace=pace, fmt_date=fmt_date, hms=hms, fmt_ts=fmt_ts)
+    def dur(sec):
+        sec = int(round(sec or 0))
+        return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}" if sec >= 3600 else f"{sec // 60}:{sec % 60:02d}"
+
+    templates.env.filters.update(dist=dist, pace=pace, fmt_date=fmt_date, hms=hms, fmt_ts=fmt_ts, dur=dur)
 
     def render(request: Request, name: str, **ctx):
         return templates.TemplateResponse(
@@ -281,13 +285,23 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         svc = request.state.svc
         p = svc.db.get_profile()
         return render(request, "plan.html", weeks=svc.full_plan(), units=p.units if p else "km", today=svc.today().isoformat(),
-                      has_profile=bool(p), outlook=svc.db.kv_get("volume_outlook"))
+                      has_profile=bool(p), outlook=svc.db.kv_get("volume_outlook"),
+                      race_date=p.race_date.isoformat() if p else "")
 
     @app.get("/progress")
     def progress(request: Request):
         svc = request.state.svc
         p = svc.db.get_profile()
-        return render(request, "progress.html", pr=svc.progress(), units=p.units if p else "km")
+        return render(request, "progress.html", pr=svc.progress(), units=p.units if p else "km", runs=svc.recent_runs())
+
+    @app.get("/run/{activity_id}")
+    def run_page(request: Request, activity_id: int):
+        svc = request.state.svc
+        view = svc.run_detail(activity_id)
+        if view is None:
+            return back("/", err="That run wasn't found.")
+        p = svc.db.get_profile()
+        return render(request, "run.html", r=view, units=p.units if p else "km")
 
     @app.get("/me")
     def me(request: Request):
@@ -371,6 +385,44 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         uid, svc = request.state.user["id"], request.state.svc
         job = start_job(uid, "sync", "Syncing with Strava", svc.sync, lambda n: f"Synced from Strava ({n} new run{'s' * (n != 1)}).")
         return job_response(request, uid, job, "/me")
+
+    # ---- plan actions and run feedback (all deterministic) -----------------------------------------------
+    def safe_next(v: str, default: str = "/") -> str:
+        return v if v.startswith("/") and not v.startswith("//") and "\\" not in v and "?" not in v else default
+
+    def do(fn, nxt: str, ok=None):
+        try:
+            res = fn()
+            return back(nxt, ok(res) if callable(ok) else ok)
+        except UserError as e:
+            return back(nxt, err=str(e))
+
+    @app.post("/workout/{wid}/skip")
+    def workout_skip(request: Request, wid: int, reason: str = Form(""), next: str = Form("/")):
+        return do(lambda: request.state.svc.skip_workout(wid, reason), safe_next(next), "Skipped. It won't count against your streak.")
+
+    @app.post("/workout/{wid}/restore")
+    def workout_restore(request: Request, wid: int, next: str = Form("/")):
+        return do(lambda: request.state.svc.restore_workout(wid), safe_next(next), "Back on the plan.")
+
+    @app.post("/workout/{wid}/move")
+    def workout_move(request: Request, wid: int, to_date: str = Form(""), next: str = Form("/")):
+        def go():
+            try:
+                to = date.fromisoformat(to_date)
+            except ValueError:
+                raise UserError("Pick a date.")
+            what, warns = request.state.svc.reschedule(wid, to)
+            return what + ("  Heads-up: " + " ".join(warns) if warns else "")
+        return do(go, safe_next(next), lambda m: m)
+
+    @app.post("/feedback")
+    def feedback(request: Request, activity_id: int = Form(...), feeling: str = Form(""), rpe: str = Form(""), note: str = Form(""),
+                 next: str = Form("/")):
+        def go():
+            return request.state.svc.save_feedback(activity_id, feeling, int(rpe) if rpe.strip().isdigit() else None, note)
+        return do(go, safe_next(next), lambda r: ("Thanks for telling me. I've eased off the next week's hard sessions; see your coach note."
+                                                  if r["pain"] else "Thanks, noted. Your coach will use this."))
 
     @app.get("/api/job")
     def api_job(request: Request):

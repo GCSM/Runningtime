@@ -40,6 +40,22 @@ def normalize(a: dict) -> dict | None:
     }
 
 
+DETAIL_KEYS = ("name", "description", "distance", "moving_time", "elapsed_time", "total_elevation_gain", "average_heartrate",
+               "max_heartrate", "average_speed", "start_date_local", "sport_type", "type", "device_name", "calories")
+
+
+def trim_activity_detail(a: dict) -> dict:
+    """Keep only what the run page shows. Strava's full detail has much more (photos, segment efforts, ...) that we don't store."""
+    out = {k: a[k] for k in DETAIL_KEYS if a.get(k) is not None}
+    m = a.get("map") or {}
+    out["polyline"] = m.get("polyline") or m.get("summary_polyline") or ""
+    out["splits"] = [
+        {k: sp.get(k) for k in ("split", "distance", "moving_time", "elapsed_time", "average_heartrate", "elevation_difference")}
+        for sp in (a.get("splits_metric") or [])
+    ]
+    return out
+
+
 class StravaClient:
     def __init__(self, settings: Settings, db: DB):
         self.s, self.db = settings, db   # db is bound to one user
@@ -137,6 +153,28 @@ class StravaClient:
             if len(batch) < 100:
                 return out
             page += 1
+
+    def fetch_activity(self, activity_id: int) -> dict:
+        """One activity's detail (route, kilometre splits, heart rate), trimmed to what we display."""
+        token, refreshed = self._access_token(), False
+        while True:
+            try:
+                r = httpx.get(f"{API}/activities/{int(activity_id)}", headers={"Authorization": f"Bearer {token}"}, timeout=30)
+            except httpx.HTTPError as e:
+                raise StravaError(MSG_NETWORK) from e
+            if r.status_code == 401 and not refreshed:
+                token, refreshed = self._access_token(force_refresh=True), True
+                continue
+            if r.status_code == 401:
+                self._forget()
+                raise StravaError(MSG_REVOKED)
+            if r.status_code == 429:
+                raise StravaError(MSG_RATE)
+            if r.status_code in (403, 404):
+                raise StravaError("Strava has no details for this run any more (it may have been deleted or made private).")
+            if r.status_code != 200:
+                raise StravaError(f"Strava activity request failed ({r.status_code}): {r.text[:200]}")
+            return trim_activity_detail(r.json())
 
     # ---- disconnect --------------------------------------------------------------------------------
     def disconnect(self) -> None:

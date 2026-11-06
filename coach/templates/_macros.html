@@ -16,11 +16,12 @@
 {%- if s == 'completed' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12.5l3.5 3.5L17 9" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
 {%- elif s == 'partial' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>
 {%- elif s == 'missed' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+{%- elif s == 'skipped' %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"/><path d="M7.5 12h9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
 {%- else %}<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" opacity=".5"/></svg>{% endif -%}
 </span>
 {%- endmacro %}
 
-{% macro workout_row(w, units, today='') -%}
+{% macro workout_row(w, units, today='', race_date='') -%}
 <details class="t-{{ w.type }}">
   <summary class="wk {{ 'today' if w.date == today }}">
     <div class="date"><span>{{ w.date|fmt_date('%a') }}</span><b>{{ w.date|fmt_date('%-d') }}</b></div>
@@ -33,6 +34,19 @@
     <span class="pill t">{{ w.type }}</span>
     {% if w.description %}<p style="margin-top:8px">{{ w.description }}</p>{% endif %}
     {% if w.pace_guidance %}<p style="margin-top:6px"><b>Pace:</b> {{ w.pace_guidance }}</p>{% endif %}
+    {% if w.note %}<p class="xs" style="margin-top:6px">{{ w.note }}</p>{% endif %}
+    {% if w.moved_from %}<p class="xs" style="margin-top:6px">Moved from {{ w.moved_from|fmt_date }}</p>{% endif %}
+    {% if w.activity_id %}<p style="margin-top:10px"><a class="btn sec sm" href="/run/{{ w.activity_id }}">Run details</a></p>{% endif %}
+    {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}
+    <div class="wk-act">
+      <form method="post" action="/workout/{{ w.id }}/move"><input type="hidden" name="next" value="/plan">
+        <input type="date" name="to_date" min="{{ today }}" max="{{ race_date }}" required aria-label="Move to date"><button class="sec sm">Move</button></form>
+      <form method="post" action="/workout/{{ w.id }}/skip"><input type="hidden" name="next" value="/plan"><button class="sec sm">Skip</button></form>
+    </div>
+    <p class="xs mut" style="margin-top:6px">Moving onto a day that already has a run swaps the two.</p>
+    {% elif w.status == 'skipped' and w.date >= today %}
+    <form method="post" action="/workout/{{ w.id }}/restore" style="margin-top:10px"><input type="hidden" name="next" value="/plan"><button class="sec sm">Undo skip</button></form>
+    {% endif %}
   </div>
 </details>
 {%- endmacro %}
@@ -42,4 +56,17 @@
 <circle class="track" cx="50" cy="50" r="42" fill="none" stroke-width="9"/>
 <circle class="val" cx="50" cy="50" r="42" fill="none" stroke="url(#rg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="263.9" stroke-dashoffset="{{ 263.9 * (1 - pct/100) }}"/></svg>
 <div class="lbl"><b class="num" data-count="{{ big }}">{{ big }}</b><span>{{ small }}</span></div></div>
+{%- endmacro %}
+
+{% macro feedback_form(aid, fb=None, nxt='/') -%}
+<form method="post" action="/feedback" class="stack"><input type="hidden" name="activity_id" value="{{ aid }}"><input type="hidden" name="next" value="{{ nxt }}">
+  <div class="chips feel" role="radiogroup" aria-label="How the run felt">
+    {% for key, label in [('easy','😌 Easy'),('good','🙂 Good'),('hard','😮‍💨 Hard'),('pain','⚠️ Something hurts')] %}
+    <label><input type="radio" name="feeling" value="{{ key }}" {{ 'required' if loop.first }} {{ 'checked' if fb and fb.feeling == key }}><span>{{ label }}</span></label>{% endfor %}
+  </div>
+  <label class="f" style="margin:0"><span class="lab">Effort <output id="rpe-out-{{ aid }}">{{ fb.rpe if fb and fb.rpe else 5 }}</output>/10</span>
+    <input type="range" name="rpe" min="1" max="10" value="{{ fb.rpe if fb and fb.rpe else 5 }}" oninput="document.getElementById('rpe-out-{{ aid }}').textContent=this.value"></label>
+  <input type="text" name="note" placeholder="Anything else? (optional)" maxlength="300" aria-label="Note" value="{{ fb.note if fb else '' }}">
+  <button>{{ 'Update' if fb else 'Save' }}</button>
+</form>
 {%- endmacro %}

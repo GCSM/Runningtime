@@ -25,6 +25,12 @@
   </div>
   {% if s.streak >= 2 %}<p class="sm" style="margin-top:16px;text-align:center"><span class="pill hot">🔥 {{ s.streak }} runs in a row without a miss</span></p>{% endif %}
 </section>
+{% if runs %}<section class="card flush rise"><div style="padding:18px 18px 4px"><h2>Recent runs</h2></div>
+  {% for a in runs %}<a class="wk" href="/run/{{ a.id }}" style="color:inherit;text-decoration:none">
+    <div class="date"><span>{{ a.date|fmt_date('%a') }}</span><b>{{ a.date|fmt_date('%-d') }}</b></div>
+    <div class="grow"><div class="b">{{ a.name }}</div><div class="sm mut">{{ a.km|dist(units) }} · {{ a.pace_s_km|pace(units) }}</div></div>
+    <span title="{{ a.feeling or 'not rated' }}" style="font-size:22px">{{ {'easy':'😌','good':'🙂','hard':'😮‍💨','pain':'⚠️'}.get(a.feeling, '') }}</span></a>{% endfor %}
+</section>{% endif %}
 <script>document.querySelector('.col.cur')?.scrollIntoView({inline:'center',block:'nearest'})</script>
 {% else %}<div class="card empty"><div class="ico">📈</div><p class="mut">Your progress will show up here once you have a plan.</p></div>{% endif %}
 {% endblock %}
