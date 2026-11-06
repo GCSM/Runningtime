@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Coach">
 <link rel="apple-touch-icon" href="/static/icon-180.png"><link rel="icon" href="/static/icon-192.png"><link rel="manifest" href="/static/manifest.webmanifest">
 <script>try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
-<link rel="stylesheet" href="/static/app.css?v=16">
-</head><body data-auth="{{ 1 if user else '' }}">
+<link rel="stylesheet" href="/static/app.css?v=17">
+</head><body data-auth="{{ 1 if user else '' }}" data-strava="{{ 1 if strava_on else '' }}">
 {% if flash %}<div class="toast" role="status">{{ flash }}</div>{% endif %}
 {% if error %}<div class="toast err" role="alert">{{ error }}</div>{% endif %}
 <main class="app {{ 'bare' if bare }}">{% block body %}{% endblock %}</main>
@@ -106,6 +106,29 @@
     if(btn)btn.disabled=false;
   });
 
+
+  /* Pull to refresh: syncs Strava when connected, otherwise just reloads the page content. */
+  (function(){
+    if(!document.body.dataset.auth||!REFRESHABLE.includes(location.pathname)||!('ontouchstart' in window))return;
+    const ind=document.createElement('div');ind.className='ptr';ind.setAttribute('aria-hidden','true');ind.textContent='↓';document.body.appendChild(ind);
+    let y0=null,dy=0,busy=false;
+    addEventListener('touchstart',e=>{y0=(!busy&&scrollY<=0&&e.touches.length===1)?e.touches[0].clientY:null;dy=0},{passive:true});
+    addEventListener('touchmove',e=>{if(y0===null)return;dy=Math.max(0,e.touches[0].clientY-y0);
+      if(dy>0&&scrollY<=0){ind.style.opacity=Math.min(1,dy/90);ind.style.transform='translate(-50%,'+Math.min(dy/2,48)+'px) rotate('+(dy>90?180:0)+'deg)'}},{passive:true});
+    addEventListener('touchend',async()=>{
+      const go=y0!==null&&dy>90;y0=null;ind.style.opacity=0;ind.style.transform='translate(-50%,0)';
+      if(!go)return;busy=true;
+      try{
+        if(document.body.dataset.strava){const r=await fetch('/sync',{method:'POST',headers:{'X-Requested-With':'fetch'}});if(r.ok)handle(await r.json())}
+        else await refreshMain();
+      }catch(e){toast("Couldn't refresh. Please try again.",true)}
+      busy=false;
+    });
+  })();
+
+  /* Offline support. Browsers only allow service workers on https or localhost, so on a plain-HTTP LAN this quietly does nothing. */
+  if('serviceWorker' in navigator&&window.isSecureContext&&document.body.dataset.auth){navigator.serviceWorker.register('/sw.js').catch(()=>{})}
+  document.addEventListener('submit',e=>{if(e.target.matches('form[action="/logout"],form[action="/account/delete"]')&&window.caches){caches.keys().then(ks=>ks.forEach(k=>caches.delete(k)))}});
   window.addEventListener('pageshow',e=>{if(e.persisted&&document.body.dataset.auth)poll()});
   window.initPage();
   if(document.body.dataset.auth)poll();                /* picks up a job that's running (or just finished) when you open any page */

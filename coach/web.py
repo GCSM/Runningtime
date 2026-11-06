@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -176,6 +177,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     templates.env.filters.update(dist=dist, pace=pace, fmt_date=fmt_date, hms=hms, fmt_ts=fmt_ts, dur=dur)
 
     def render(request: Request, name: str, **ctx):
+        svc = getattr(request.state, "svc", None)
+        ctx.setdefault("strava_on", bool(svc and svc.strava.connected))
         return templates.TemplateResponse(
             request, name,
             {"flash": request.query_params.get("msg"), "error": request.query_params.get("err"),
@@ -206,7 +209,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         request.state.user = user
         if path.startswith("/cal/"):
             return await call_next(request)          # the calendar feed is authenticated by its secret token
-        if path.startswith("/static") or path in ("/login", "/signup"):
+        if path.startswith("/static") or path in ("/login", "/signup", "/sw.js"):
             if user and path in ("/login", "/signup") and request.method == "GET":
                 return RedirectResponse("/", 303)
             return await call_next(request)
@@ -331,6 +334,11 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def crew_kudos(request: Request, to_user: int, emoji: str = Form(...)):
         from . import crew as C
         return do(lambda: C.send_kudos(db, request.state.user["id"], to_user, emoji, request.state.svc.today()), "/crew")
+
+    @app.get("/sw.js")
+    def service_worker():
+        """Served from the root so it can control every page. Only registered by the browser on https/localhost."""
+        return FileResponse(HERE / "static" / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
     @app.get("/me")
     def me(request: Request):

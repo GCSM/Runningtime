@@ -285,3 +285,6 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
 .wiz-bar{display:flex;gap:6px;margin:0 0 18px}.wiz-bar i{flex:1;height:5px;border-radius:3px;background:var(--fill)}.wiz-bar i.on{background:linear-gradient(90deg,var(--hl),var(--hl2))}
 .wiz-nav{display:flex;gap:10px;margin-top:6px}.wiz-nav button{flex:1}
 [hidden]{display:none!important}
+
+.ptr{position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translate(-50%,0);width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
+  background:var(--card);box-shadow:var(--shadow);border:1px solid var(--cardb);font-weight:800;opacity:0;pointer-events:none;z-index:60;transition:opacity .15s}

@@ -106,3 +106,12 @@ def test_setup_wizard_only_for_new_users_and_form_still_posts_without_js(tmp_pat
     assert 'data-wizard="1"' in first and "Build my plan" in first and 'name="race_date"' in first      # fields all present for no-JS
     again = a.get("/setup").text                                                                          # already has a profile
     assert 'data-wizard' not in again and ">Save<" in again
+
+
+def test_service_worker_is_served_from_root_and_never_caches_posts_or_api(tmp_path):
+    (a, *_), _ = build(tmp_path, 1)
+    anon = TestClient(a.app)
+    r = anon.get("/sw.js")
+    assert r.status_code == 200 and "javascript" in r.headers["content-type"] and r.headers["service-worker-allowed"] == "/"
+    assert 'r.method !== "GET"' in r.text and '"/api"' in r.text and "isSecureContext" in a.get("/").text
+    assert "caches.delete" in a.get("/me").text                                          # cached pages are wiped at sign-out
