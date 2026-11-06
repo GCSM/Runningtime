@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Running Coach</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--fg:#1d1d1b;--mut:#6b6b66;--line:#e4e4df;--acc:#fc4c02;--ok:#1f8a4c;--warn:#b7791f;--bad:#c53030}
+@media(prefers-color-scheme:dark){:root{--bg:#141413;--card:#1e1e1c;--fg:#ecece8;--mut:#9a9a93;--line:#33332f;--ok:#4cc58a;--warn:#e0b050;--bad:#f07070}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:16px}
+nav{display:flex;gap:16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);max-width:860px;margin:0 auto}
+nav b{margin-right:auto}a{color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin:0 0 16px}
+h1,h2,h3{margin:0 0 8px}h1{font-size:1.4rem}h2{font-size:1.1rem}.mut{color:var(--mut)}.sm{font-size:.875rem}
+table{width:100%;border-collapse:collapse}td,th{padding:8px 6px;border-top:1px solid var(--line);text-align:left;vertical-align:top}th{border:0;color:var(--mut);font-weight:500;font-size:.8rem}
+.badge{font-size:.75rem;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.completed{color:var(--ok)}.partial{color:var(--warn)}.missed{color:var(--bad)}.planned{color:var(--mut)}
+button,.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 14px;font:inherit;cursor:pointer;text-decoration:none;display:inline-block}
+button.sec,.btn.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+input,select,textarea{font:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);max-width:100%}
+textarea{width:100%}label{display:block;margin:12px 0 4px;font-weight:500}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.flash{padding:10px 14px;border-radius:8px;margin-bottom:16px;background:var(--card);border-left:4px solid var(--ok)}.flash.err{border-color:var(--bad)}
+.prose{white-space:pre-wrap}
+</style></head><body>
+<nav><b>🏃 Running Coach</b><a href="/">Dashboard</a><a href="/plan">Plan</a><a href="/setup">Goal &amp; schedule</a></nav>
+<main>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+{% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+{% block body %}{% endblock %}
+</main>
+<script>document.querySelectorAll('form[data-busy]').forEach(f=>f.addEventListener('submit',()=>{const b=f.querySelector('button');b.disabled=true;b.textContent=f.dataset.busy}))</script>
+</body></html>

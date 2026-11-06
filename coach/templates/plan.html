@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block body %}
+<h1>Full plan</h1>
+{% for wk in weeks %}
+<div class="card">
+  <h2>Week of {{ wk.week_start|dayname }} <span class="mut sm">{{ wk.phase }}{% if wk.recovery %} · recovery{% endif %}{% if wk.target_km %} · target {{ wk.target_km|dist(units) }}{% endif %}</span></h2>
+  <table>{% for w in wk.workouts %}
+    <tr><td style="width:7em">{{ w.date|dayname }}</td><td><b>{{ w.title }}</b> <span class="mut sm">{{ w.type }}</span><div class="sm mut">{{ w.description }}{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}</div></td>
+    <td style="text-align:right;white-space:nowrap">{{ w.distance_km|dist(units) }}</td><td><span class="badge {{ w.status }}">{{ w.status }}</span></td></tr>
+  {% endfor %}</table>
+</div>
+{% else %}<p class="mut">No plan yet. <a href="/">Generate one from the dashboard.</a></p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block body %}
+{% set p = d.profile %}
+<div class="card">
+  <h1>{{ p.goal_label }} · {{ p.race_date.strftime('%b %-d, %Y') }}</h1>
+  <div class="mut">{{ d.days_to_race }} days to go{% if p.goal_time_s %} · target {{ '%d:%02d:%02d' % (p.goal_time_s//3600, p.goal_time_s%3600//60, p.goal_time_s%60) }}{% endif %}</div>
+</div>
+
+{% if not d.has_plan %}
+<div class="card"><h2>No plan yet</h2>
+  <p class="mut">The coach will build a periodized plan from today to race day around your schedule{% if d.strava_connected %} and your recent Strava runs{% endif %}.</p>
+  <form method="post" action="/plan/generate" data-busy="Coach is thinking… (up to a minute)"><button>Generate my plan</button></form>
+</div>
+{% else %}
+<div class="card">
+  <h2>This week{% if d.week %} <span class="mut sm">· {{ d.week.phase }}{% if d.week.recovery %} (recovery){% endif %} · target {{ d.week.target_km|dist(units) }} · done {{ d.week_actual_km|dist(units) }}</span>{% endif %}</h2>
+  <table>
+  {% for w in d.week_workouts %}
+    <tr><td style="width:7em"><b>{{ w.date|dayname }}</b></td>
+    <td><b>{{ w.title }}</b> <span class="mut sm">{{ w.type }}</span><div class="sm mut">{{ w.description }}{% if w.pace_guidance %} · {{ w.pace_guidance }}{% endif %}</div></td>
+    <td style="text-align:right;white-space:nowrap">{{ w.distance_km|dist(units) }}<div class="sm mut">{{ w.duration_min }} min</div></td>
+    <td><span class="badge {{ w.status }}">{{ w.status }}{% if w.actual_km %} · {{ w.actual_km|dist(units) }}{% endif %}</span></td></tr>
+  {% else %}<tr><td class="mut">Nothing scheduled this week.</td></tr>{% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>Check in with your coach</h2>
+  <form method="post" action="/review" data-busy="Reviewing… (up to a minute)">
+    <textarea name="note" rows="3" placeholder="Optional: how did it feel? Any niggles, travel, schedule changes?"></textarea>
+    <div class="row" style="margin-top:8px"><button>Sync Strava &amp; adjust plan</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if d.log %}<div class="card"><h2>Latest from your coach <span class="mut sm">{{ d.log[0].created_at[:10] }}</span></h2><div class="prose">{{ d.log[0].message }}</div></div>{% endif %}
+
+<div class="card row">
+  {% if d.strava_connected %}
+    <span>🟠 Strava connected{% if d.strava_name %} as {{ d.strava_name }}{% endif %}<span class="mut sm"> · last sync {{ d.last_sync[:16].replace('T',' ') if d.last_sync else 'never' }}</span></span>
+    <form method="post" action="/sync" data-busy="Syncing…" style="margin-left:auto"><button class="sec">Sync now</button></form>
+  {% elif settings.strava_configured %}
+    <span class="mut">Connect Strava so the coach can adapt to what you actually run.</span><a class="btn" style="margin-left:auto" href="/strava/connect">Connect Strava</a>
+  {% else %}
+    <span class="mut">Strava not configured — set STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET (see README).</span>
+  {% endif %}
+</div>
+{% endblock %}
