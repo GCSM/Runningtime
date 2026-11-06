@@ -94,7 +94,7 @@ LONG_RUN_CAP_KM = {  # peak long run by event and level; upper end = claude-coac
     "advanced":     {5.0: 12, 10.0: 16, 21.0975: 22, 42.195: 35},
 }
 LONG_RUN_MAX_MIN = 150          # Daniels, as summarised: ≤150 min
-LONG_RUN_MAX_MIN_MARATHON = 210  # claude-coach: marathon long runs ≤3.5 h
+LONG_RUN_MAX_MIN_MARATHON = 240  # 4 h: slower runners need it to cover 30+ km (Higdon novice 20-miler ≈ 4 h); the km caps still bind
 LONG_RUN_GROWTH_PCT = 0.10       # vs. longest run of the previous 4 weeks (Frandsen, secondary) …
 LONG_RUN_GROWTH_FLOOR_KM = 2.5   # … or +2–3 km/week (claude-coach), whichever is larger
 
@@ -104,7 +104,7 @@ def long_run_share(week_km: float, run_days: int, goal_km: float = 10.0) -> floa
 
     5K/10K: ~40% for 3-run weeks (Higdon Novice 5K ≈ 37%), else 30% (25% at ≥64 km/week) – the Daniels/coach rule.
     Half/marathon: higher (35% / 40%), because those plans routinely exceed 25–30% (claude-coach: marathon long runs of
-    28–35 km at 60–90 km/week); the time cap (150/210 min) and event cap still bound the run.
+    28–35 km at 60–90 km/week); the time cap (150/240 min) and event cap still bound the run.
     """
     b = _bucket(goal_km)
     if b >= 42:

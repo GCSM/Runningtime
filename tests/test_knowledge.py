@@ -110,7 +110,7 @@ def test_long_run_caps_follow_claude_coach_event_targets():
     for g in K.ANCHORS:
         caps = [K.long_run_cap_km(g, lv) for lv in K.LEVELS]
         assert caps == sorted(caps)
-    assert K.long_run_max_minutes(42.195) == 210 and K.long_run_max_minutes(10) == 150
+    assert K.long_run_max_minutes(42.195) == 240 and K.long_run_max_minutes(10) == 150
 
 
 def test_long_run_share_depends_on_distance_and_run_days():
@@ -230,3 +230,11 @@ def test_too_few_weeks_is_flagged_even_with_plenty_of_time():
 def test_shorter_goals_with_sensible_schedules_are_not_flagged():
     for goal, exp, mins, lm in [(5.0, "beginner", 150, 45), (10.0, "intermediate", 240, 75), (21.0975, "intermediate", 300, 120)]:
         assert _mk_outlook(goal, exp, weeks=14, mins=mins, long_min=lm, base=20).warnings == [], goal
+
+
+def test_max_long_lets_a_slow_marathoner_reach_a_real_long_run_but_km_caps_still_bind():
+    slow = 450.0                                                   # 7:30/km easy: a ~5 h marathon
+    assert K.long_run_km(90, 42.195, "intermediate", 5, 240, slow) == 32.0          # 240 min = 32 km, at the intermediate cap
+    assert K.long_run_km(90, 42.195, "intermediate", 5, 210, slow) == 28.0
+    assert K.long_run_km(110, 42.195, "advanced", 6, 240, 330.0) == 35.0            # fast runner: capped by distance, not time
+    assert K.long_run_km(70, 21.0975, "intermediate", 5, 240, slow) <= 20.0         # half marathon cap unchanged
