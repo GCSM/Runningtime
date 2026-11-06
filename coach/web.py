@@ -202,6 +202,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         token = request.cookies.get(auth.COOKIE)
         user = db.session_user(auth.token_hash(token)) if token else None
         request.state.user = user
+        if path.startswith("/cal/"):
+            return await call_next(request)          # the calendar feed is authenticated by its secret token
         if path.startswith("/static") or path in ("/login", "/signup"):
             if user and path in ("/login", "/signup") and request.method == "GET":
                 return RedirectResponse("/", 303)
@@ -319,7 +321,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         d = svc.dashboard()
         used = len(db.strava_user_ids())
         full = d["strava_ready"] and not d["strava_connected"] and used >= settings.strava_athlete_limit
+        tok = svc.calendar_token()
+        feed = f"{base}/cal/{tok}.ics" if tok else None
         return render(request, "me.html", d=d, p=p, units=p.units if p else "km", settings=settings,
+                      cal_url=feed, cal_webcal=("webcal://" + feed.split("://", 1)[1]) if feed else None,
                       callback_host=host, callback_is_ip=is_ip, callback_url=f"{base}/strava/callback",
                       strava_used=used, strava_full=full)
 
@@ -432,6 +437,31 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     @app.post("/race-checklist")
     def race_checklist(request: Request, item: str = Form(""), checked: str = Form("1"), next: str = Form("/")):
         return do(lambda: request.state.svc.toggle_checklist(item, checked == "1"), safe_next(next))
+
+    # ---- private calendar feed ------------------------------------------------------------------------------
+    @app.get("/cal/{token}.ics")
+    def calendar_feed(request: Request, token: str):
+        import re as _re
+        from datetime import datetime as _dt, timezone as _tz
+
+        if not _re.fullmatch(r"[A-Za-z0-9_-]{20,64}", token):
+            return PlainTextResponse("Not found", 404)
+        uid = db.user_id_by_kv("ics_token", token)
+        if uid is None:
+            return PlainTextResponse("Not found", 404)
+        text = service_for(uid).calendar_text(str(request.base_url), _dt.now(_tz.utc))
+        return PlainTextResponse(text, media_type="text/calendar; charset=utf-8",
+                                 headers={"Cache-Control": "private, max-age=300", "Content-Disposition": 'inline; filename="running-coach.ics"'})
+
+    @app.post("/calendar/enable")
+    def calendar_enable(request: Request):
+        request.state.svc.enable_calendar()
+        return back("/me", "Calendar link created. Add it to your calendar below.")
+
+    @app.post("/calendar/disable")
+    def calendar_disable(request: Request):
+        request.state.svc.disable_calendar()
+        return back("/me", "Calendar link turned off. Anything subscribed to it will stop updating.")
 
     @app.get("/api/job")
     def api_job(request: Request):

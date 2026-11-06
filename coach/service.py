@@ -11,6 +11,7 @@ from . import knowledge as K
 from .config import Settings
 from .db import DB
 from .actions import ActionsMixin
+from .ics import build_calendar
 from .progress_views import ProgressMixin
 from .errors import UserError  # noqa: F401  (re-exported for callers)
 from .runview import build_run_view
@@ -291,6 +292,27 @@ class CoachService(ActionsMixin, ProgressMixin):
             and self.today() < (self.db.get_profile().race_date if self.db.get_profile() else date.min)
         ):
             self.review(sync=False)
+
+    # ---- calendar feed -----------------------------------------------------------------------------------
+    def calendar_token(self) -> str | None:
+        return self.db.kv_get("ics_token")
+
+    def enable_calendar(self) -> str:
+        """Create (or rotate) the private feed token. Rotating invalidates the old link."""
+        import secrets
+
+        token = secrets.token_urlsafe(32)
+        self.db.kv_set("ics_token", token)
+        return token
+
+    def disable_calendar(self) -> None:
+        self.db.kv_delete("ics_token")
+
+    def calendar_text(self, base_url: str, now: datetime | None = None) -> str:
+        p = self.db.get_profile()
+        return build_calendar(self.db.get_workouts(), availability={d: a.model_dump() for d, a in p.availability.items()} if p else {},
+                              units=p.units if p else "km", user_id=self.db.uid, base_url=base_url,
+                              now=now or datetime.now(timezone.utc))
 
     # ---- run detail --------------------------------------------------------------------------------------
     def _activity_detail(self, activity_id: int) -> tuple[dict | None, str | None]:

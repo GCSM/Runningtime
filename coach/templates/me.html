@@ -42,6 +42,20 @@
 {% endif %}
 </section>
 
+<section class="card"><h2>Calendar</h2>
+{% if cal_url %}
+  <p class="sm mut" style="margin-bottom:12px">Your plan as a subscribed calendar, with a reminder 30 minutes before each run (or at 7am for all-day runs). It updates by itself when your plan changes.</p>
+  <a class="btn" href="{{ cal_webcal }}">Add to Calendar</a>
+  <div class="row" style="margin-top:10px;gap:8px"><input type="text" id="cal-url" value="{{ cal_url }}" readonly aria-label="Calendar link" style="font-size:13px"><button type="button" class="sec sm" style="width:auto" onclick="const i=document.getElementById('cal-url');i.select();i.setSelectionRange(0,999);(navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).catch(()=>document.execCommand('copy'));this.textContent='Copied'">Copy</button></div>
+  <p class="xs mut" style="margin-top:8px">Anyone with this link can see your workouts, so keep it private. Your phone must be able to reach this server to refresh it. Set a usual time per day in Goal &amp; schedule to get timed events.</p>
+  <div class="row" style="margin-top:12px"><form method="post" action="/calendar/enable" class="grow" onsubmit="return confirm('Create a new link? Calendars using the old one will stop updating.')"><button class="sec sm" style="width:100%">New link</button></form>
+    <form method="post" action="/calendar/disable" class="grow"><button class="danger sm" style="width:100%">Turn off</button></form></div>
+{% else %}
+  <p class="sm mut" style="margin-bottom:12px">Get your workouts in Apple or Google Calendar, with reminders. We create a private link only you have; nothing is shared until you turn this on.</p>
+  <form method="post" action="/calendar/enable"><button class="sec">Create my calendar link</button></form>
+{% endif %}
+</section>
+
 <section class="card"><h2>Account</h2>
   <form method="post" action="/logout"><button class="sec">Sign out</button></form>
   <details style="margin-top:16px"><summary class="sm b" style="color:var(--bad)">Delete account…</summary>

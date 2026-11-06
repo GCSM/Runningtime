@@ -138,6 +138,11 @@ class DB:
             c.execute("delete from kudos where from_user=? or to_user=?", (uid, uid))
             c.execute("delete from users where id=?", (uid,))  # sessions cascade
 
+    def user_id_by_kv(self, key: str, value) -> int | None:
+        with self.conn() as c:
+            r = c.execute("select user_id from kv where key=? and value=?", (key, json.dumps(value))).fetchone()
+        return r["user_id"] if r else None
+
     def strava_user_ids(self) -> list[int]:
         with self.conn() as c:
             return [r["user_id"] for r in c.execute("select user_id from kv where key='strava_token'")]
