@@ -23,7 +23,7 @@
   <div class="card empty rise">
     <div class="ico">🗓️</div><h3 style="font-size:22px;font-weight:800">Let’s build your plan</h3>
     <p class="mut" style="margin:6px 0 18px">Your coach will map out every week from today to race day{% if d.strava_connected %}, starting from your recent Strava runs{% endif %}.</p>
-    <form method="post" action="/plan/generate" data-busy="Your coach is building your plan…"><button>Generate my plan</button></form>
+    <form method="post" action="/plan/generate" data-job><button>Generate my plan</button></form>
   </div>
 {% elif w %}
   <section class="hero t-{{ w.type }} rise {{ 'finished' if w.status == 'completed' }}" data-word="{{ w.type }}">
@@ -66,7 +66,7 @@
 
 <section class="card rise">
   <h2>Check in with your coach</h2>
-  <form method="post" action="/review" data-busy="Your coach is reviewing your training…" class="stack">
+  <form method="post" action="/review" data-job class="stack">
     <textarea name="note" placeholder="How did it feel? Any niggles, travel, or schedule changes?" rows="3"></textarea>
     <button>{{ 'Sync Strava & adjust plan' if d.strava_connected else 'Adjust my plan' }}</button>
   </form>

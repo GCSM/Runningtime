@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import itertools
 import secrets
+import threading
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -12,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -60,6 +62,58 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         now = time.time()
         failures[key] = [t for t in failures[key] if now - t < 600]
         return len(failures[key]) >= 8
+
+    # ---- background jobs: slow work (Claude, Strava) runs off the request so pages never block ----------
+    job_ids = itertools.count(1)
+    jobs: dict[int, dict] = {}          # user id -> most recent job
+    jobs_lock = threading.Lock()
+    JOB_STALE_S = 15 * 60               # a job "running" longer than this is reported as failed (e.g. thread hung)
+
+    def start_job(uid: int, kind: str, label: str, fn, ok_msg) -> dict:
+        """Start fn in a thread unless this user already has one running. Returns the (new or existing) job."""
+        with jobs_lock:
+            cur = jobs.get(uid)
+            if cur and cur["status"] == "running" and time.time() - cur["started"] < JOB_STALE_S:
+                return cur
+            job = {"id": next(job_ids), "kind": kind, "label": label, "status": "running", "message": "", "started": time.time()}
+            jobs[uid] = job
+
+        def run():
+            try:
+                res = fn()
+                status, msg = "done", (ok_msg(res) if callable(ok_msg) else ok_msg)
+            except (UserError, StravaError) as e:
+                status, msg = "error", str(e)
+            except Exception as e:  # noqa: BLE001
+                log.exception("%s job failed", kind)
+                status, msg = "error", explain(e) or f"Something went wrong: {e}"
+            with jobs_lock:
+                job.update(status=status, message=msg, finished=time.time())
+                if db.user_by_id(uid) is None:   # account was deleted while this ran: don't leave its data behind
+                    db.delete_user(uid)
+                    jobs.pop(uid, None)
+
+        threading.Thread(target=run, name=f"job-{kind}-{uid}", daemon=True).start()
+        return job
+
+    def public_job(uid: int) -> dict:
+        with jobs_lock:
+            j = jobs.get(uid)
+            if not j:
+                return {"status": "idle"}
+            status, msg = j["status"], j["message"]
+            if status == "running" and time.time() - j["started"] >= JOB_STALE_S:
+                status, msg = "error", "That took too long and was abandoned. Please try again."
+            return {"id": j["id"], "kind": j["kind"], "label": j["label"], "status": status, "message": msg}
+
+    def wants_json(request: Request) -> bool:
+        return request.headers.get("x-requested-with") == "fetch" or "application/json" in request.headers.get("accept", "")
+
+    def job_response(request: Request, uid: int, job: dict, path: str = "/"):
+        """JSON for the page's script; a plain redirect (banner appears on load) for no-JS form posts."""
+        if wants_json(request):
+            return JSONResponse(public_job(uid))
+        return RedirectResponse(path, 303)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -147,21 +201,13 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
                 return RedirectResponse("/", 303)
             return await call_next(request)
         if not user:
+            if path.startswith("/api/"):
+                return JSONResponse({"status": "unauthenticated"}, status_code=401)
             return RedirectResponse("/login", 303)
         request.state.svc = service_for(user["id"])
         resp = await call_next(request)
         resp.headers["Cache-Control"] = "no-store"
         return resp
-
-    def action(fn, ok_msg, path="/"):
-        try:
-            res = fn()
-            return back(path, ok_msg(res) if callable(ok_msg) else ok_msg)
-        except (UserError, StravaError) as e:
-            return back(path, err=str(e))
-        except Exception as e:
-            log.exception("action failed")
-            return back(path, err=explain(e) or f"Something went wrong: {e}")
 
     # ---- accounts ----------------------------------------------------------
     @app.get("/login")
@@ -291,15 +337,25 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     # ---- actions ---------------------------------------------------------
     @app.post("/plan/generate")
     def generate(request: Request):
-        return action(request.state.svc.generate_plan, "Your plan is ready.")
+        uid = request.state.user["id"]
+        job = start_job(uid, "generate", "Your coach is building your plan", request.state.svc.generate_plan, "Your plan is ready.")
+        return job_response(request, uid, job)
 
     @app.post("/review")
     def review(request: Request, note: str = Form("")):
-        return action(lambda: request.state.svc.review(note.strip()), "Plan reviewed and updated.")
+        uid, svc, note = request.state.user["id"], request.state.svc, note.strip()
+        job = start_job(uid, "review", "Your coach is reviewing your training", lambda: svc.review(note), "Plan reviewed and updated.")
+        return job_response(request, uid, job)
 
     @app.post("/sync")
     def sync(request: Request):
-        return action(request.state.svc.sync, lambda n: f"Synced from Strava ({n} new run{'s' * (n != 1)}).", "/me")
+        uid, svc = request.state.user["id"], request.state.svc
+        job = start_job(uid, "sync", "Syncing with Strava", svc.sync, lambda n: f"Synced from Strava ({n} new run{'s' * (n != 1)}).")
+        return job_response(request, uid, job, "/me")
+
+    @app.get("/api/job")
+    def api_job(request: Request):
+        return JSONResponse(public_job(request.state.user["id"]), headers={"Cache-Control": "no-store"})
 
     # ---- strava oauth ----------------------------------------------------
     @app.get("/strava/connect")

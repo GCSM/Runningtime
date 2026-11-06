@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Coach">
 <link rel="apple-touch-icon" href="/static/icon-180.png"><link rel="icon" href="/static/icon-192.png"><link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="stylesheet" href="/static/app.css?v=6">
-</head><body>
+<link rel="stylesheet" href="/static/app.css?v=10">
+</head><body data-auth="{{ 1 if user else '' }}">
 {% if flash %}<div class="toast" role="status">{{ flash }}</div>{% endif %}
 {% if error %}<div class="toast err" role="alert">{{ error }}</div>{% endif %}
 <main class="app {{ 'bare' if bare }}">{% block body %}{% endblock %}</main>
@@ -21,15 +21,77 @@
   <a href="/me" class="{{ 'on' if path in ('/me','/setup') }}">{{ icon('me') }}Me</a>
 </nav></div>
 {% endif %}
-<div class="overlay" id="busy" role="alert" aria-live="polite"><svg class="pulse" viewBox="0 0 180 60" aria-hidden="true"><path d="M0 30h46l12-22 20 44 14-30 8 8h80"/></svg><div><div class="b" id="busy-t" style="font-size:20px">Working…</div><div class="sm mut" style="margin-top:4px">This can take up to a minute.</div></div></div>
+<div class="jobbar" id="jobbar" hidden role="status" aria-live="polite">
+  <svg class="pulse mini" viewBox="0 0 180 60" aria-hidden="true"><path d="M0 30h46l12-22 20 44 14-30 8 8h80"/></svg>
+  <div class="grow"><div class="b" id="jobbar-t">Working…</div><div class="xs mut">You can keep browsing. This page updates when it's done.</div></div>
+</div>
 <script>
-document.querySelectorAll('form[data-busy]').forEach(f=>f.addEventListener('submit',()=>{
-  document.getElementById('busy-t').textContent=f.dataset.busy;document.getElementById('busy').classList.add('on')}));
-window.addEventListener('pageshow',e=>{if(e.persisted)document.getElementById('busy').classList.remove('on')});
-if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('[data-count]').forEach(el=>{
-  const t=parseFloat(el.dataset.count),dp=(el.dataset.count.split('.')[1]||'').length,t0=performance.now();
-  const node=[...el.childNodes].find(n=>n.nodeType===3);  /* animate only the number, keep child elements like the unit */
-  if(isNaN(t)||!node)return;(function f(n){const k=Math.min(1,(n-t0)/800),e=1-Math.pow(1-k,3);node.nodeValue=(t*e).toFixed(dp);if(k<1)requestAnimationFrame(f)})(t0)});
-if(location.search.includes('msg=')||location.search.includes('err=')){history.replaceState(null,'',location.pathname)}
+(function(){
+  const $=s=>document.querySelector(s);
+  const REFRESHABLE=['/','/plan','/progress','/me'];
+  let timer=null;
+  const store={get(k){try{return sessionStorage.getItem(k)}catch(e){return null}},set(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}};
+
+  window.initPage=function(){
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.querySelectorAll('[data-count]').forEach(el=>{
+      const t=parseFloat(el.dataset.count),dp=(el.dataset.count.split('.')[1]||'').length,t0=performance.now();
+      const node=[...el.childNodes].find(n=>n.nodeType===3);  /* animate only the number, keep child elements like the unit */
+      if(isNaN(t)||!node)return;(function f(n){const k=Math.min(1,(n-t0)/800),e=1-Math.pow(1-k,3);node.nodeValue=(t*e).toFixed(dp);if(k<1)requestAnimationFrame(f)})(t0)});
+    const sc=$('.col.cur');if(sc&&sc.scrollIntoView)sc.scrollIntoView({inline:'center',block:'nearest'});
+  };
+
+  function toast(msg,isErr){
+    const d=document.createElement('div');d.className='toast'+(isErr?' err':'');d.setAttribute('role',isErr?'alert':'status');d.textContent=msg;
+    document.body.appendChild(d);d.addEventListener('animationend',()=>d.remove());
+  }
+  function bar(label){$('#jobbar-t').textContent=label||'Working…';$('#jobbar').hidden=false;document.body.classList.add('job-on')}
+  function stop(){clearInterval(timer);timer=null;$('#jobbar').hidden=true;document.body.classList.remove('job-on')}
+
+  async function refreshMain(){
+    if(!REFRESHABLE.includes(location.pathname))return;
+    try{
+      const r=await fetch(location.pathname,{headers:{'X-Requested-With':'fetch'},cache:'no-store'});
+      if(!r.ok||r.redirected)return;
+      const doc=new DOMParser().parseFromString(await r.text(),'text/html');
+      const fresh=doc.querySelector('main'),cur=$('main');
+      if(fresh&&cur){cur.innerHTML=fresh.innerHTML;window.initPage()}
+      const tabs=doc.querySelector('.tabbar'),curTabs=$('.tabbar');if(tabs&&curTabs)curTabs.innerHTML=tabs.innerHTML;
+    }catch(e){}
+  }
+
+  function handle(j){
+    if(!j||j.status==='idle'||j.status==='unauthenticated'){stop();return}
+    if(j.status==='running'){bar(j.label);if(!timer)timer=setInterval(poll,2000);return}
+    stop();
+    if(store.get('job-seen')!==String(j.id)){          /* announce each finished job once, on whatever page you're on */
+      store.set('job-seen',String(j.id));
+      toast(j.message,j.status==='error');
+      if(j.status==='done')refreshMain();
+    }
+  }
+  async function poll(){
+    try{const r=await fetch('/api/job',{headers:{'X-Requested-With':'fetch'},cache:'no-store'});
+        if(r.ok)handle(await r.json());else if(r.status===401)stop()}catch(e){}
+  }
+
+  /* Forms marked data-job start a background job and return immediately; without JS they post normally. */
+  document.addEventListener('submit',async e=>{
+    const f=e.target.closest('form[data-job]');if(!f||!window.fetch)return;
+    e.preventDefault();
+    const btn=f.querySelector('button');if(btn)btn.disabled=true;
+    try{
+      const r=await fetch(f.action,{method:'POST',body:new FormData(f),headers:{'X-Requested-With':'fetch'}});
+      if(!r.ok)throw new Error(r.status);
+      const ta=f.querySelector('textarea');if(ta)ta.value='';
+      handle(await r.json());
+    }catch(err){toast("Couldn't start that. Please try again.",true)}
+    if(btn)btn.disabled=false;
+  });
+
+  window.addEventListener('pageshow',e=>{if(e.persisted&&document.body.dataset.auth)poll()});
+  window.initPage();
+  if(document.body.dataset.auth)poll();                /* picks up a job that's running (or just finished) when you open any page */
+  if(location.search.includes('msg=')||location.search.includes('err=')){history.replaceState(null,'',location.pathname)}
+})();
 </script>
 </body></html>

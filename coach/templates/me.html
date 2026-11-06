@@ -16,7 +16,7 @@
 {% if d.strava_connected %}
   <p class="b">Connected{% if d.strava_name %} as {{ d.strava_name }}{% endif %}</p>
   <p class="sm mut" style="margin:2px 0 14px">Last sync: {{ d.last_sync|fmt_ts }}. Runs sync automatically.</p>
-  <div class="row"><form method="post" action="/sync" data-busy="Syncing with Strava…" class="grow"><button class="sec">Sync now</button></form>
+  <div class="row"><form method="post" action="/sync" data-job class="grow"><button class="sec">Sync now</button></form>
   <form method="post" action="/strava/disconnect" class="grow"><button class="danger">Disconnect</button></form></div>
 {% elif d.strava_ready %}
   <p class="sm mut" style="margin-bottom:14px">{% if d.strava_app_source == 'user' %}Your Strava app (Client ID {{ d.strava_client_id }}) is saved.{% else %}This server has a shared Strava app.{% endif %} Connect to let your coach compare what you planned with what you ran.</p>

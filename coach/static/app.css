@@ -190,11 +190,16 @@ input:focus,select:focus,textarea:focus{outline:0;border-color:var(--hl);box-sha
   background:var(--fg);color:var(--bg);padding:12px 18px;border-radius:16px;font-size:15px;font-weight:600;box-shadow:0 12px 40px rgba(0,0,0,.35);animation:toast 5s forwards}
 .toast.err{background:var(--bad);color:#fff}
 @keyframes toast{0%{opacity:0;transform:translate(-50%,-12px)}6%,90%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;pointer-events:none}}
-.overlay{position:fixed;inset:0;z-index:50;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
-  display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:32px}
-.overlay.on{display:flex}
+.jobbar{position:fixed;z-index:45;left:16px;right:16px;margin:0 auto;top:calc(env(safe-area-inset-top) + 10px);max-width:608px;
+  display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:18px;background:color-mix(in srgb,var(--card) 55%,var(--bg));
+  -webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);border:1px solid var(--cardb);box-shadow:0 14px 40px -10px rgba(0,0,0,.45);animation:jobin .35s both}
+body.job-on .app{padding-top:calc(env(safe-area-inset-top) + 118px)}
+.app{transition:padding-top .25s ease}
+@keyframes jobin{from{opacity:0;transform:translateY(-10px)}}
+.jobbar[hidden]{display:none}
 .pulse{width:180px;height:60px;overflow:visible}
-.pulse path{fill:none;stroke:var(--hl);stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:260;stroke-dashoffset:260;animation:beat 1.6s linear infinite;filter:drop-shadow(0 0 8px var(--hl))}
+.pulse.mini{width:54px;height:18px;flex:none}
+.pulse path{fill:none;stroke:var(--hl);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:260;stroke-dashoffset:260;animation:beat 1.6s linear infinite;filter:drop-shadow(0 0 8px var(--hl))}
 @keyframes beat{to{stroke-dashoffset:-260}}
 .prose{white-space:pre-wrap;font-size:16px;line-height:1.5}
 .clamp{display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}

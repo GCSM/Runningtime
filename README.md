@@ -22,6 +22,9 @@ via Safari → Share → Add to Home Screen), with light and dark mode.
 - **Adaptation.** On every review the skeleton is *re-derived from what you really ran* (mean of the last 4 complete
   weeks), so missed weeks pull targets down and consistent weeks let it progress. Claude also sees per-workout
   planned vs. actual, pace, HR, unplanned runs, and your free-text check-in ("calf felt tight").
+- **Never makes you wait.** Building a plan, reviewing and syncing run as background jobs: the page returns instantly, a
+  banner shows progress while you keep browsing, and when it finishes you get a toast and the page updates itself.
+  (One job per user at a time; a second tap just joins the running one.)
 - **Automatic.** A background task syncs Strava every `SYNC_INTERVAL_MIN` and reviews the plan once at the start of each
   week (`AUTO_ADJUST=true`). You can also hit **Sync Strava & adjust plan** any time.
 

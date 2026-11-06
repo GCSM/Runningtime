@@ -168,6 +168,25 @@ def signup(c, email="a@example.com", name="Ann", pw="correct-horse"):
     return c.post("/signup", data={"name": name, "email": email, "password": pw}, follow_redirects=False)
 
 
+def wait_job(c, timeout=10):
+    """Poll the job endpoint until the user's background job is no longer running; return the final job."""
+    import time as _t
+    end = _t.time() + timeout
+    while _t.time() < end:
+        j = c.get("/api/job").json()
+        if j["status"] != "running":
+            return j
+        _t.sleep(0.02)
+    raise AssertionError("job did not finish")
+
+
+def join_jobs(timeout=10):
+    import threading as _th
+    for t in _th.enumerate():
+        if t.name.startswith("job-"):
+            t.join(timeout)
+
+
 def test_auth_gate_and_signup(tmp_path):
     c, db = make_client(tmp_path)
     assert c.get("/", follow_redirects=False).headers["location"] == "/login"
@@ -199,11 +218,13 @@ def test_web_flow_and_user_isolation(tmp_path):
     signup(a)
     assert a.post("/setup", data=FORM, follow_redirects=False).status_code == 303
     r = a.post("/plan/generate", follow_redirects=True)
-    assert "Your plan is ready" in r.text and "Today" in r.text
+    assert "Today" in r.text                                              # returns immediately; work happens in the background
+    assert wait_job(a) == {**wait_job(a), "status": "done", "message": "Your plan is ready."}
     for page in ("/plan", "/progress", "/me", "/"):
         assert a.get(page).status_code == 200
     assert "long-run day" in a.post("/setup", data={**FORM, "av_sun": ""}, follow_redirects=True).text
     assert a.post("/review", data={"note": "good"}, follow_redirects=True).status_code == 200
+    assert wait_job(a)["message"] == "Plan reviewed and updated."
     assert a.post("/plan/generate", headers={"origin": "http://evil.example"}).status_code == 403
 
     # A second user in a second browser sees none of user A's data.
@@ -221,6 +242,7 @@ def test_delete_account_removes_everything(tmp_path):
     signup(c)
     c.post("/setup", data=FORM)
     c.post("/plan/generate")
+    wait_job(c)
     assert "confirm" in c.post("/account/delete", data={"confirm": "wrong"}, follow_redirects=True).text.lower()
     assert c.post("/account/delete", data={"confirm": "a@example.com"}, follow_redirects=False).status_code == 303
     assert db.user_by_email("a@example.com") is None and db.for_user(1).get_workouts() == []
@@ -317,8 +339,9 @@ def test_web_shows_friendly_message_for_rejected_key(tmp_path):
     c = TestClient(create_app(s, db=db, coach=Rejecting(), strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY))
     signup(c)
     c.post("/setup", data=FORM)
-    r = c.post("/plan/generate", follow_redirects=True)
-    assert "rejected the API key" in r.text and "Something went wrong" not in r.text
+    c.post("/plan/generate")
+    j = wait_job(c)
+    assert j["status"] == "error" and "rejected the API key" in j["message"] and "Something went wrong" not in j["message"]
 
 
 def test_missing_key_gives_clear_message_not_a_stack_trace(tmp_path, monkeypatch):
@@ -328,7 +351,9 @@ def test_missing_key_gives_clear_message_not_a_stack_trace(tmp_path, monkeypatch
     c = TestClient(create_app(s, db=db, coach=Coach("claude-sonnet-5-5"), strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY))
     signup(c)
     c.post("/setup", data=FORM)
-    assert "No Anthropic API key is configured" in c.post("/plan/generate", follow_redirects=True).text
+    c.post("/plan/generate")
+    j = wait_job(c)
+    assert j["status"] == "error" and "No Anthropic API key is configured" in j["message"]
 
 
 def test_check_tool_spots_common_paste_mistakes(tmp_path):
@@ -509,3 +534,112 @@ def test_login_redirects_stay_on_the_host_being_used_and_cookie_is_secure_over_h
     sec = TestClient(app, base_url="https://coach.example.com")
     r = sec.post("/login", data={"email": "a@example.com", "password": "correct-horse"}, follow_redirects=False)
     assert "secure" in r.headers["set-cookie"].lower()
+
+
+# ---- background jobs ------------------------------------------------------------------------
+import threading as _threading
+
+
+class SlowCoach(FakeCoach):
+    """Blocks inside the model call until released, so we can observe the page not waiting."""
+    def __init__(self):
+        super().__init__()
+        self.release, self.entered = _threading.Event(), _threading.Event()
+
+    def plan(self, ctx, *, mode, feedback=None):
+        self.entered.set()
+        assert self.release.wait(10), "test never released the coach"
+        return super().plan(ctx, mode=mode, feedback=feedback)
+
+
+def slow_client(tmp_path, coach):
+    s = Settings(db_path=str(tmp_path / "j.db"), sync_interval_min=0)
+    db = DB(s.db_path)
+    c = TestClient(create_app(s, db=db, coach=coach, strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY))
+    signup(c)
+    c.post("/setup", data=FORM)
+    return c, db
+
+
+def test_request_returns_immediately_while_claude_is_still_working(tmp_path):
+    import time as _t
+    coach = SlowCoach()
+    c, db = slow_client(tmp_path, coach)
+    t0 = _t.time()
+    r = c.post("/plan/generate", headers={"X-Requested-With": "fetch"})
+    assert _t.time() - t0 < 2 and r.status_code == 200                     # did not wait for the model
+    assert r.json()["status"] == "running" and r.json()["kind"] == "generate"
+    assert coach.entered.wait(5)
+    assert c.get("/api/job").json()["status"] == "running"
+    assert db.for_user(1).get_workouts() == []                              # nothing yet
+    assert "Your coach is building your plan" in c.get("/api/job").json()["label"]
+    # The rest of the app stays usable while it works.
+    assert c.get("/").status_code == 200 and c.get("/plan").status_code == 200
+    coach.release.set()
+    j = wait_job(c)
+    assert j["status"] == "done" and j["message"] == "Your plan is ready."
+    assert len(db.for_user(1).get_workouts()) > 10                          # data is there once it finishes
+
+
+def test_second_tap_does_not_start_a_second_model_call(tmp_path):
+    coach = SlowCoach()
+    c, _ = slow_client(tmp_path, coach)
+    first = c.post("/plan/generate", headers={"X-Requested-With": "fetch"}).json()
+    assert coach.entered.wait(5)
+    second = c.post("/plan/generate", headers={"X-Requested-With": "fetch"}).json()
+    review = c.post("/review", data={"note": "x"}, headers={"X-Requested-With": "fetch"}).json()
+    assert second["id"] == first["id"] and review["id"] == first["id"]      # same job; nothing new started
+    coach.release.set()
+    wait_job(c)
+    assert {mode for mode, _, _ in coach.calls} == {"generate"}             # the extra /review tap never reached the model
+    assert len([1 for _, _, feedback in coach.calls if feedback is None]) == 1   # one initial attempt (a feedback retry is separate)
+
+
+def test_plain_form_post_still_works_without_javascript(tmp_path):
+    coach = SlowCoach()
+    c, _ = slow_client(tmp_path, coach)
+    r = c.post("/plan/generate", follow_redirects=False)                    # no X-Requested-With header
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    coach.release.set()
+    assert wait_job(c)["status"] == "done"
+
+
+def test_job_status_is_private_per_user_and_requires_login(tmp_path):
+    coach = SlowCoach()
+    a, _ = slow_client(tmp_path, coach)
+    a.post("/plan/generate")
+    assert coach.entered.wait(5)
+    b = TestClient(a.app)
+    assert b.get("/api/job").status_code == 401 and b.get("/api/job").json()["status"] == "unauthenticated"
+    signup(b, "b@example.com", "Bob")
+    assert b.get("/api/job").json() == {"status": "idle"}                   # B can't see A's job
+    coach.release.set()
+    wait_job(a)
+
+
+def test_failed_job_reports_a_friendly_error_and_a_retry_works(tmp_path):
+    class Flaky(FakeCoach):
+        n = 0
+        def plan(self, ctx, *, mode, feedback=None):
+            Flaky.n += 1
+            if Flaky.n == 1:
+                raise _api_error(anthropic.RateLimitError, 429)
+            return super().plan(ctx, mode=mode, feedback=feedback)
+    c, _ = slow_client(tmp_path, Flaky())
+    c.post("/plan/generate")
+    j = wait_job(c)
+    assert j["status"] == "error" and "rate limit" in j["message"].lower()
+    c.post("/plan/generate")                                                # a finished job doesn't block the next one
+    assert wait_job(c)["status"] == "done"
+
+
+def test_deleting_account_mid_job_leaves_no_data_behind(tmp_path):
+    coach = SlowCoach()
+    c, db = slow_client(tmp_path, coach)
+    c.post("/plan/generate")
+    assert coach.entered.wait(5)
+    assert c.post("/account/delete", data={"confirm": "a@example.com"}, follow_redirects=False).status_code == 303
+    coach.release.set()
+    join_jobs()
+    assert db.user_by_email("a@example.com") is None
+    assert db.for_user(1).get_workouts() == [] and db.for_user(1).get_weeks() == [] and db.for_user(1).recent_log() == []
