@@ -39,14 +39,19 @@
 </section>
 
 <section class="card flush">
-  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Your plan can only be as big as the time you give it. Marathon: 150+ minutes on your long-run day and about 5 hours a week in total. Half marathon: 100+ minutes and 4 hours a week.</p></div>
+  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Pick the longest run you could fit each day. Your plan can only be as big as the time you give it: for a marathon make your long-run day “Extra long” (150 min) and give most other days Medium or Long; for a half marathon, “Long” (90 min) on your long-run day is enough.</p></div>
   {% for d in days %}{% set a = p.availability[d] if p else None %}
   <div class="day">
     <div class="top"><span class="b">{{ {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'}[d] }}</span>
       <label class="sw"><input type="checkbox" name="av_{{ d }}" {{ 'checked' if (a.available if a else d in ['tue','thu','sat','sun']) }} aria-label="Available {{ d }}"><i></i></label></div>
     <div class="more">
-      <label><span class="lab">Minutes</span><input type="number" name="min_{{ d }}" inputmode="numeric" min="0" max="300" step="5" value="{{ a.minutes if a else (120 if d=='sun' else 45) }}"></label>
-      <label><span class="lab">Usual time</span><input type="time" name="time_{{ d }}" value="{{ a.time if a else '' }}"></label>
+      <div class="full"><span class="lab">How long can you run?</span>
+        {% set cur = a.minutes if a else (120 if d=='sun' else 45) %}
+        {% set ns = namespace(best=lengths[0][1]) %}{% for nm, mn in lengths %}{% if (mn - cur)|abs < (ns.best - cur)|abs %}{% set ns.best = mn %}{% endif %}{% endfor %}
+        <div class="chips lens" role="radiogroup" aria-label="Run length on {{ d }}">
+          {% for nm, mn in lengths %}<label><input type="radio" name="min_{{ d }}" value="{{ mn }}" {{ 'checked' if mn == ns.best }}><span>{{ nm }}<small> {{ mn }}m</small></span></label>{% endfor %}
+        </div></div>
+      <label class="full"><span class="lab">Usual time (optional)</span><input type="time" name="time_{{ d }}" value="{{ a.time if a else '' }}"></label>
     </div>
   </div>{% endfor %}
 </section>

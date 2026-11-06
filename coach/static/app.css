@@ -289,3 +289,4 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
 .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translate(-50%,0);width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
   background:var(--card);box-shadow:var(--shadow);border:1px solid var(--cardb);font-weight:800;opacity:0;pointer-events:none;z-index:60;transition:opacity .15s}
 .wordmark{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px}.wordmark b{color:var(--hl);font-style:italic}
+.day .more .full{grid-column:1/-1}.lens span{padding:10px 14px}.lens small{opacity:.65;font-weight:600;font-size:12px}

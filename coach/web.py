@@ -31,6 +31,7 @@ from .strava import StravaClient, StravaError
 
 log = logging.getLogger("coach")
 HERE = Path(__file__).parent
+RUN_LENGTHS = [("Short", 40), ("Medium", 60), ("Long", 90), ("Extra long", 150)]   # longest run that fits a given day, in minutes
 PRESETS = {"5K": 5.0, "10K": 10.0, "Half marathon": 21.0975, "Marathon": 42.195}
 PUBLIC_PATHS = {"/login", "/signup", "/healthz"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -378,7 +379,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def setup(request: Request):
         from . import knowledge as K
 
-        return render(request, "setup.html", p=request.state.svc.db.get_profile(), days=DAYS, presets=PRESETS, level_help=K.LEVEL_HELP)
+        return render(request, "setup.html", p=request.state.svc.db.get_profile(), days=DAYS, presets=PRESETS, level_help=K.LEVEL_HELP, lengths=RUN_LENGTHS)
 
     @app.post("/setup")
     async def setup_save(request: Request):

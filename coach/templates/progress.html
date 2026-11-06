@@ -4,7 +4,7 @@
 <p class="sub rise">How your training is stacking up against the plan.</p>
 <div class="stats rise">
   <div class="stat big"><span>Total distance · this plan</span><b class="num" data-count="{{ s.total_km|dist(units, false) }}">{{ s.total_km|dist(units, false) }}<small style="color:inherit;opacity:.7"> {{ units }}</small></b></div>
-  <div class="stat"><span>Completed</span><b class="num">{{ s.completed }}<small> / {{ s.scheduled }}</small></b></div>
+  <div class="stat"><span>Completed</span>{% if s.scheduled %}<b class="num">{{ s.completed }}<small> / {{ s.scheduled }}</small></b>{% else %}<b class="num">–</b><small class="xs mut">Nothing due yet</small>{% endif %}</div>
   <div class="stat"><span>Consistency</span><b class="num">{{ (s.adherence_pct ~ '%') if s.adherence_pct is not none else '–' }}</b></div>
 </div>
 <section class="card rise"><h2>Weekly distance</h2>

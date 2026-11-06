@@ -142,3 +142,24 @@ def test_setup_warns_immediately_and_the_dashboard_keeps_the_warning(tmp_path):
     assert "This plan won’t fully prepare you" in a.get("/").text
     ok = a.post("/setup", data={**marathon, "min_sun": "210", "min_tue": "75", "min_thu": "75", "min_sat": "75", "baseline": "40", "race_date": str(TODAY + timedelta(weeks=28))}, follow_redirects=True)
     assert "heads-up" not in ok.text and "won’t fully prepare" not in a.get("/").text
+
+
+def test_run_length_is_a_choice_of_categories_not_free_numbers(tmp_path):
+    (a, *_), db = build(tmp_path, 1)
+    page = a.get("/setup").text
+    assert 'type="radio" name="min_sun"' in page and 'name="min_sun" inputmode' not in page
+    for nm in ("Short", "Medium", "Long", "Extra long"):
+        assert f"<span>{nm}<small>" in page
+    a.post("/setup", data={**SETUP, "baseline": "25", "min_sun": "150", "min_tue": "40"})
+    p = db.for_user(1).get_profile()
+    assert p.availability["sun"].minutes == 150 and p.availability["tue"].minutes == 40
+    page = a.get("/setup").text
+    assert 'name="min_sun" value="150" checked' in page and 'name="min_tue" value="40" checked' in page
+    db.for_user(1).save_profile(p.model_copy(update={"availability": {**p.availability, "thu": p.availability["thu"].model_copy(update={"minutes": 75})}}))
+    assert 'name="min_thu" value="60" checked' in a.get("/setup").text            # an old free-form 75 snaps to the nearest category (ties go shorter)
+
+
+def test_progress_shows_nothing_due_instead_of_0_of_0_on_a_new_plan(tmp_path):
+    c, _ = __import__("test_chat").web(tmp_path, __import__("test_chat").FakeChat())
+    page = c.get("/progress").text
+    assert "Nothing due yet" in page and "0<small> / 0" not in page
