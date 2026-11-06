@@ -46,7 +46,7 @@ def parse_hms(s: str) -> int | None:
 def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
-    coach = coach or Coach(settings.model)
+    coach = coach or Coach(settings.model, effort=settings.effort)
     strava_factory = strava_factory or (lambda udb: StravaClient(settings, udb))
 
     def service_for(uid: int) -> CoachService:

@@ -231,3 +231,54 @@ def test_marathon_race_week_has_room_for_the_race():
     p = profile(goal_km=42.195, goal_label="Marathon", race_date=TODAY + timedelta(weeks=20))
     weeks = skel(p, baseline=40)
     assert weeks[-1].race_week and weeks[-1].target_km >= 42.195 + 6
+
+
+# ---- the real Claude call (fake SDK client) --------------------------------------------
+from types import SimpleNamespace as NS
+
+from coach.llm import Coach
+
+
+class FakeSDK:
+    def __init__(self, replies):
+        self.replies, self.calls = list(replies), []
+        self.messages = NS(create=self._create)
+
+    def _create(self, **kw):
+        self.calls.append(kw)
+        return self.replies.pop(0)
+
+
+def _reply(content, stop="tool_use"):
+    return NS(stop_reason=stop, content=content)
+
+
+PLAN = NS(type="tool_use", name="submit_plan", input={"summary": "hi", "workouts": [{"date": "2026-11-05"}]})
+
+
+def test_claude_request_shape_is_valid_for_current_models():
+    sdk = FakeSDK([_reply([PLAN])])
+    out = Coach("claude-sonnet-5-5", client=sdk, effort="low").plan({"x": 1}, mode="generate")
+    kw = sdk.calls[0]
+    assert out == {"summary": "hi", "workouts": [{"date": "2026-11-05"}]}
+    assert kw["tool_choice"] == {"type": "auto"}          # forced tool_choice is a 400 on current models
+    assert kw["tools"][0]["strict"] is True and kw["tools"][0]["input_schema"]["additionalProperties"] is False
+    assert kw["output_config"] == {"effort": "low"}
+    assert "temperature" not in kw and "thinking" not in kw
+    assert "submit_plan" in kw["messages"][0]["content"]
+
+
+def test_claude_retries_once_without_tool_call_then_fails_clearly():
+    sdk = FakeSDK([_reply([NS(type="text", text="sure!")], "end_turn"), _reply([PLAN])])
+    assert Coach("m", client=sdk).plan({}, mode="adjust")["summary"] == "hi"
+    assert len(sdk.calls) == 2
+    sdk = FakeSDK([_reply([NS(type="text", text="no")], "end_turn")] * 2)
+    with pytest.raises(RuntimeError, match="did not return a plan"):
+        Coach("m", client=sdk).plan({}, mode="generate")
+
+
+def test_claude_refusal_and_truncation_are_reported():
+    with pytest.raises(RuntimeError, match="declined"):
+        Coach("m", client=FakeSDK([_reply([], "refusal")])).plan({}, mode="generate")
+    with pytest.raises(RuntimeError, match="cut off"):
+        Coach("m", client=FakeSDK([_reply([], "max_tokens")])).plan({}, mode="generate")

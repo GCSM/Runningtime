@@ -35,14 +35,17 @@ Always answer by calling submit_plan. `summary` is addressed to the athlete (sec
 TOOL = {
     "name": "submit_plan",
     "description": "Submit the complete set of scheduled workouts and a short message to the athlete.",
+    "strict": True,
     "input_schema": {
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "summary": {"type": "string", "description": "Message to the athlete: plan overview or review of recent training and what changed."},
             "workouts": {
                 "type": "array",
                 "items": {
                     "type": "object",
+                    "additionalProperties": False,
                     "properties": {
                         "date": {"type": "string", "description": "YYYY-MM-DD"},
                         "type": {"type": "string", "enum": WORKOUT_TYPES},
@@ -62,8 +65,9 @@ TOOL = {
 
 
 class Coach:
-    def __init__(self, model: str, client=None):
+    def __init__(self, model: str, client=None, effort: str = "medium"):
         self.model = model
+        self.effort = effort
         self._client = client
 
     @property
@@ -83,17 +87,24 @@ class Coach:
         )
         if feedback:
             task += "\n\nYour previous attempt was corrected by validation. Avoid these problems:\n- " + "\n- ".join(feedback[:12])
-        resp = self.client.messages.create(
-            model=self.model,
-            max_tokens=16000,
-            system=SYSTEM,
-            tools=[TOOL],
-            tool_choice={"type": "tool", "name": "submit_plan"},
-            messages=[{"role": "user", "content": f"{task}\n\n```json\n{json.dumps(context, indent=1)}\n```"}],
-        )
-        if resp.stop_reason == "max_tokens":
-            raise RuntimeError("The coach's answer was cut off; try again.")
-        for block in resp.content:
-            if block.type == "tool_use" and block.name == "submit_plan":
-                return {"summary": block.input.get("summary", ""), "workouts": block.input.get("workouts", [])}
-        raise RuntimeError("The coach did not return a plan.")
+        task += "\n\nRespond by calling the submit_plan tool exactly once. Do not write any other text."
+        prompt = f"{task}\n\n```json\n{json.dumps(context, indent=1)}\n```"
+        for attempt in range(2):
+            # Forced tool_choice (any/tool) is rejected by current models, so use auto + strict schema + instruction.
+            resp = self.client.messages.create(
+                model=self.model,
+                max_tokens=16000,
+                system=SYSTEM,
+                tools=[TOOL],
+                tool_choice={"type": "auto"},
+                output_config={"effort": self.effort},
+                messages=[{"role": "user", "content": prompt}],
+            )
+            if resp.stop_reason == "refusal":
+                raise RuntimeError("The model declined this request. Try rephrasing your notes.")
+            if resp.stop_reason == "max_tokens":
+                raise RuntimeError("The coach's answer was cut off; try again.")
+            for block in resp.content:
+                if block.type == "tool_use" and block.name == "submit_plan":
+                    return {"summary": block.input.get("summary", ""), "workouts": block.input.get("workouts", [])}
+        raise RuntimeError("The coach did not return a plan. Please try again.")

@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 class Settings:
     db_path: str = "data/coach.db"
     model: str = "claude-sonnet-5-5"
+    effort: str = "medium"
     strava_client_id: str = ""
     strava_client_secret: str = ""
     public_url: str = "http://localhost:8000"
@@ -25,6 +26,7 @@ class Settings:
         return cls(
             db_path=e("COACH_DB", "data/coach.db"),
             model=e("COACH_MODEL", "claude-sonnet-5-5"),
+            effort=e("COACH_EFFORT", "medium"),
             strava_client_id=e("STRAVA_CLIENT_ID", ""),
             strava_client_secret=e("STRAVA_CLIENT_SECRET", ""),
             public_url=e("PUBLIC_URL", "http://localhost:8000").rstrip("/"),
