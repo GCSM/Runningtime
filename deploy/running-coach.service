@@ -7,11 +7,14 @@ Wants=network-online.target
 User=coach
 Group=coach
 WorkingDirectory=@APP_DIR@
+Environment=COACH_PORT=80
 EnvironmentFile=/etc/running-coach.env
-ExecStart=@APP_DIR@/.venv/bin/uvicorn coach.web:create_app --factory --host 0.0.0.0 --port 8000
+ExecStart=@APP_DIR@/.venv/bin/uvicorn coach.web:create_app --factory --host 0.0.0.0 --port ${COACH_PORT}
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
+# Lets the unprivileged 'coach' user listen on ports below 1024 (e.g. 80) and nothing else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 # Deliberately no ProtectSystem/PrivateTmp: they often fail inside unprivileged LXC without nesting.
 
 [Install]

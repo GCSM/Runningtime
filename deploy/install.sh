@@ -8,7 +8,7 @@
 # without touching your config. Signups are open (intended for a trusted home LAN); see REQUIRE_INVITE below.
 #
 # Non-interactive / overrides (all optional), e.g.:
-#   ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://192.168.1.50:8000 TZ=America/Chicago \
+#   ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://coach.lan TZ=America/Chicago \
 #     STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
 #   Require an invite code to sign up:  REQUIRE_INVITE=1 (generates one)  or  INVITE_CODE=yourword
 #
@@ -18,7 +18,6 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-/etc/running-coach.env}"
 DATA_DIR="${DATA_DIR:-/var/lib/running-coach}"
-PORT=8000
 CONFIGURE_ONLY=0
 [ "${1:-}" = "--configure-only" ] && CONFIGURE_ONLY=1
 
@@ -26,9 +25,10 @@ CONFIGURE_ONLY=0
 
 configure() {
   cp "$APP_DIR/.env.example" "$ENV_FILE"
-  local ip url tz key invite
+  local ip url tz key invite port
   ip="$(detect_ip)"; ip="${ip:-127.0.0.1}"
-  url="${PUBLIC_URL:-http://$ip:$PORT}"
+  port="${COACH_PORT:-80}"
+  url="${PUBLIC_URL:-$(url_with_port "$ip" "$port")}"
   tz="${TZ:-$(detect_tz)}"
 
   key="${ANTHROPIC_API_KEY:-}"
@@ -43,6 +43,7 @@ configure() {
 
   set_var ANTHROPIC_API_KEY "$key"
   set_var PUBLIC_URL "$url"
+  set_var COACH_PORT "$port"
   set_var TZ "$tz"
   set_var COACH_DB "$DATA_DIR/coach.db"
   set_var ALLOW_SIGNUPS "true"
@@ -83,7 +84,8 @@ python3 -m venv "$APP_DIR/.venv"
 "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
 NEW_ENV=0
-if [ ! -f "$ENV_FILE" ]; then configure; NEW_ENV=1; else echo "==> Keeping existing config $ENV_FILE"; fi
+if [ ! -f "$ENV_FILE" ]; then configure; NEW_ENV=1; else echo "==> Keeping existing config $ENV_FILE"; migrate_port; fi
+PORT="$(env_port)"
 
 sed "s#@APP_DIR@#$APP_DIR#g" "$APP_DIR/deploy/running-coach.service" > /etc/systemd/system/running-coach.service
 chown -R coach:coach "$DATA_DIR"

@@ -21,14 +21,14 @@ On the first run the script:
 - detects the container's IP and timezone and writes `/etc/running-coach.env` (readable only by root and the service)
 - asks for your Anthropic API key (input hidden; press Enter to skip and add it later)
 - leaves signups open (no invite code), which suits a trusted home LAN
-- starts the service and prints the URL, e.g. `http://192.168.1.50:8000`
+- starts the service and prints the URL, e.g. `http://192.168.1.50` (the app listens on port 80, so no `:port` is needed)
 
 Open that URL and create your account. Re-running the script later updates the app and restarts it
 without touching your config.
 
 Skip the prompts by passing values as environment variables (all optional):
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://192.168.1.50:8000 TZ=America/Chicago \
+ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://coach.lan TZ=America/Chicago \
 STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
 ```
 If the app is ever reachable beyond your LAN, require a code to sign up: `REQUIRE_INVITE=1` generates one, or
@@ -40,14 +40,15 @@ To change settings later, use `deploy/reconfigure.sh` (see below).
 | Variable | What it does |
 |---|---|
 | `ANTHROPIC_API_KEY` | your key (billed for every user's plans/reviews) |
-| `PUBLIC_URL` | address users type; `http://IP:8000` for plain LAN use, `https://…` once you add HTTPS |
+| `PUBLIC_URL` | address users type, e.g. `http://coach.lan` for plain LAN use, `https://…` once you add HTTPS |
+| `COACH_PORT` | port the app listens on (default `80`, so URLs need no `:port`); change with `reconfigure.sh COACH_PORT=8080` |
 | `TZ` | decides what counts as "today" and when the weekly review runs |
 | `INVITE_CODE` / `ALLOW_SIGNUPS` | restrict who can sign up |
 | `STRAVA_CLIENT_ID/SECRET` | optional shared Strava app; normally leave blank because each user adds their own on the Me tab (callback domain in Strava = host of `PUBLIC_URL`) |
 
 > **Plain HTTP vs HTTPS:** keep `PUBLIC_URL` matching how you actually reach the app. With an `https://` `PUBLIC_URL` the
 > login cookie is marked Secure and browsers silently drop it over HTTP, so sign-in appears to do nothing. The installer
-> defaults to `http://<container-ip>:8000`, which is fine on a trusted home network (passwords are not encrypted in transit).
+> defaults to `http://<container-ip>`, which is fine on a trusted home network (passwords are not encrypted in transit).
 
 Logs: `journalctl -u running-coach -f`
 
@@ -64,6 +65,13 @@ bash deploy/reconfigure.sh --unset INVITE_CODE      # remove a setting
 Values are validated first (effort, URL scheme, timezone, true/false, numbers), and a bad value changes nothing. In the
 walkthrough, type `-` to clear a value, and `new` at the invite-code prompt to generate a code. The 5 most recent
 backups are kept as `/etc/running-coach.env.bak.<timestamp>`.
+
+## Troubleshooting: service won't start on port 80
+Port 80 is below 1024, so the unit grants the `coach` user just that one capability (`CAP_NET_BIND_SERVICE`). If
+`journalctl -u running-coach -n 30` shows `Permission denied` / `error while attempting to bind on address ('0.0.0.0', 80)`
+in your container, either something else already uses port 80 (`ss -ltnp | grep :80`), or the container doesn't allow the
+capability. The simple fix is a higher port: `bash deploy/reconfigure.sh COACH_PORT=8000 PUBLIC_URL=http://<host>:8000`
+(the port is never part of Strava's callback domain).
 
 ## Troubleshooting: "API key error" when building a plan
 The app reads its config only when it starts, so **after changing the key, restart it**. `reconfigure.sh` does that for
@@ -89,11 +97,11 @@ says what failed. Common causes:
 Strava compares the host in the callback URL the app sends with the **Authorization Callback Domain** on the user's
 Strava app. They must match exactly. The domain is the bare host only: no `http://`, no port, no trailing slash.
 The Me tab shows the exact value to use (it's the host of `PUBLIC_URL`) and the full callback URL being sent.
-- The port (`:8000`) is not the usual cause; it doesn't belong in the domain field.
-- If the server is addressed by an IP (`http://192.168.1.50:8000`), Strava may refuse an IP as the callback domain
+- The port is not the usual cause; it never belongs in the domain field.
+- If the server is addressed by an IP (`http://192.168.1.50`), Strava may refuse an IP as the callback domain
   (not confirmed either way). Give the server a hostname instead — a local DNS name such as `coach.lan`, or a
   `nip.io` name like `coach.192.168.1.50.nip.io`, which resolves to that IP — then run `bash deploy/reconfigure.sh`,
-  set `PUBLIC_URL` to `http://<that hostname>:8000`, and use that hostname as the Strava callback domain.
+  set `PUBLIC_URL` to `http://<that hostname>`, and use that hostname as the Strava callback domain.
 - Changed `PUBLIC_URL`? The app restarts, but the Strava app's callback domain must be updated to the new host too.
 
 ## 3. HTTPS access (optional; pick one)
@@ -105,8 +113,8 @@ The Me tab shows the exact value to use (it's the host of `PUBLIC_URL`) and the 
   lxc.cgroup2.devices.allow: c 10:200 rwm
   lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
   ```
-  then `tailscale up` and `tailscale serve --bg 8000` for an HTTPS tailnet URL (set `PUBLIC_URL` to it).
-- Don't expose port 8000 to the internet directly.
+  then `tailscale up` and `tailscale serve --bg 80` for an HTTPS tailnet URL (set `PUBLIC_URL` to it).
+- Don't expose the app's port to the internet directly.
 
 ## 4. Backups
 Everything is one SQLite file, `/var/lib/running-coach/coach.db` (also holds Strava tokens: treat it as secret).
@@ -116,6 +124,10 @@ sqlite3 /var/lib/running-coach/coach.db ".backup '/root/coach-$(date +%F).db'"
 ```
 
 ## 5. Updating
+> **Upgrading an older install:** earlier versions listened on port 8000. On the first `install.sh` run after upgrading, a plain-HTTP
+> install moves to port 80 and `PUBLIC_URL` loses its `:8000`; an `https://` install keeps 8000 so a reverse proxy keeps
+> working (switch later with `reconfigure.sh COACH_PORT=80`). The script prints what it changed.
+
 ```bash
 cd /opt/running-coach && git pull && bash deploy/install.sh
 ```

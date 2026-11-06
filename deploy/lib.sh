@@ -25,3 +25,29 @@ detect_tz() {
 }
 
 random_code() { head -c 32 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8; }
+
+env_port() { local p; p="$(get_var COACH_PORT)"; echo "${p:-80}"; }
+
+url_with_port() {  # url_with_port HOST PORT : http://HOST (no :80 suffix) or http://HOST:PORT
+  if [ "$2" = 80 ]; then echo "http://$1"; else echo "http://$1:$2"; fi
+}
+
+migrate_port() {
+  # Installs from before COACH_PORT existed listened on 8000. Move plain-HTTP LAN installs to port 80 (and fix
+  # PUBLIC_URL to match), but keep 8000 for HTTPS installs because a reverse proxy probably points at it.
+  [ -z "$(get_var COACH_PORT)" ] || return 0
+  local url; url="$(get_var PUBLIC_URL)"
+  case "$url" in
+    https://*)
+      set_var COACH_PORT 8000
+      echo "==> Keeping port 8000 (your PUBLIC_URL is https, so a reverse proxy likely points there)."
+      echo "    To move to port 80: bash deploy/reconfigure.sh COACH_PORT=80   (and update the proxy)" ;;
+    *)
+      set_var COACH_PORT 80
+      case "$url" in
+        http://*:8000) set_var PUBLIC_URL "${url%:8000}"; echo "==> Now listening on port 80; PUBLIC_URL changed to ${url%:8000}" ;;
+        *) echo "==> Now listening on port 80." ;;
+      esac
+      echo "    The port isn't part of Strava's callback domain, so nothing to change there unless the host changed." ;;
+  esac
+}

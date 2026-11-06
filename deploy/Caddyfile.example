@@ -2,5 +2,5 @@
 # Set in /etc/running-coach.env:  PUBLIC_URL=https://coach.example.com   FORWARDED_ALLOW_IPS=<this proxy's IP>
 coach.example.com {
     encode zstd gzip
-    reverse_proxy 10.0.0.50:8000   # the Running Coach container's IP
+    reverse_proxy 10.0.0.50:80   # the Running Coach container's IP and COACH_PORT
 }

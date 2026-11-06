@@ -16,7 +16,6 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-/etc/running-coach.env}"
 SERVICE="${SERVICE:-running-coach}"
-PORT=8000
 HEALTH_TRIES="${HEALTH_TRIES:-20}"
 . "$APP_DIR/deploy/lib.sh"
 
@@ -55,7 +54,7 @@ if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
   systemctl cat "$SERVICE" >/dev/null 2>&1 || die "Service '$SERVICE' isn't installed. Run deploy/install.sh first."
 fi
 
-KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE
+KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT COACH_PORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE
       STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET SYNC_INTERVAL_MIN AUTO_ADJUST FORWARDED_ALLOW_IPS)
 SECRETS=" ANTHROPIC_API_KEY STRAVA_CLIENT_SECRET INVITE_CODE "
 
@@ -83,6 +82,7 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
     COACH_EFFORT) case "$v" in low|medium|high) ;; *) echo "COACH_EFFORT must be low, medium or high"; return 1 ;; esac ;;
     PUBLIC_URL) case "$v" in http://*|https://*) ;; *) echo "PUBLIC_URL must start with http:// or https://"; return 1 ;; esac ;;
     TZ) [ -f "/usr/share/zoneinfo/$v" ] || { echo "Unknown timezone '$v' (e.g. America/New_York)"; return 1; } ;;
+    COACH_PORT) { [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ]; } || { echo "COACH_PORT must be a port number from 1 to 65535"; return 1; } ;;
     ALLOW_SIGNUPS|AUTO_ADJUST) case "$v" in true|false) ;; *) echo "$k must be true or false"; return 1 ;; esac ;;
     SYNC_INTERVAL_MIN) [[ "$v" =~ ^[0-9]+$ ]] || { echo "SYNC_INTERVAL_MIN must be a whole number of minutes (0 disables)"; return 1; } ;;
   esac
@@ -132,8 +132,9 @@ else
   ask ANTHROPIC_API_KEY "Anthropic API key" secret
   ask COACH_MODEL "Model (e.g. claude-sonnet-5-5, claude-haiku-5-5)"
   ask COACH_EFFORT "Effort: low | medium | high (lower = cheaper)"
+  ask COACH_PORT "Port the app listens on (80 = no :port needed in URLs)"
   ip="$(detect_ip)"
-  ask PUBLIC_URL "Public URL (this container is ${ip:-unknown}; http://IP:$PORT or your https:// address)"
+  ask PUBLIC_URL "Public URL (this container is ${ip:-unknown}; e.g. $(url_with_port "${ip:-HOST}" "$(env_port)") or your https:// address)"
   ask TZ "Timezone"
   ask ALLOW_SIGNUPS "Allow signups: true | false"
   cur="$(get_var INVITE_CODE)"
@@ -172,6 +173,12 @@ if [ "$old_url" != "$(get_var PUBLIC_URL)" ]; then
 fi
 
 if [ "$RESTART" = 0 ]; then echo "Saved (not restarted). Backup: $BACKUP"; exit 0; fi
+
+PORT="$(env_port)"   # may have just changed
+old_port="$(printf '%s\n' "$BEFORE" | grep '^COACH_PORT=' | tail -n1 | cut -d= -f2- || true)"
+if [ "$old_port" != "$(get_var COACH_PORT)" ]; then
+  echo "  note: the app will now listen on port $PORT. Make sure PUBLIC_URL (and any reverse proxy) uses it."
+fi
 
 echo; echo "Restarting $SERVICE…"
 systemctl restart "$SERVICE"
