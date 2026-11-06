@@ -307,6 +307,31 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         p = svc.db.get_profile()
         return render(request, "run.html", r=view, units=p.units if p else "km")
 
+    # ---- crew ------------------------------------------------------------
+    @app.get("/crew")
+    def crew_page(request: Request):
+        from . import crew as C
+        uid, svc = request.state.user["id"], request.state.svc
+        member = C.is_member(svc.db)
+        return render(request, "crew.html", member=member, people=C.crew(db, uid, svc.today()), emoji=C.EMOJI)
+
+    @app.post("/crew/join")
+    def crew_join(request: Request):
+        from . import crew as C
+        C.join(request.state.svc.db)
+        return back("/crew", "You're in the crew.")
+
+    @app.post("/crew/leave")
+    def crew_leave(request: Request):
+        from . import crew as C
+        C.leave(request.state.svc.db)
+        return back("/me", "You left the crew. Others no longer see your stats.")
+
+    @app.post("/crew/kudos/{to_user}")
+    def crew_kudos(request: Request, to_user: int, emoji: str = Form(...)):
+        from . import crew as C
+        return do(lambda: C.send_kudos(db, request.state.user["id"], to_user, emoji, request.state.svc.today()), "/crew")
+
     @app.get("/me")
     def me(request: Request):
         svc = request.state.svc

@@ -392,15 +392,8 @@ class CoachService(ActionsMixin, ProgressMixin):
         return data
 
     def streak(self) -> int:
-        """Consecutive most-recent scheduled runs that were done (fully or partly), stopping at the first miss."""
-        past = [w for w in self.db.get_workouts(end=self.today()) if w["status"] in ("completed", "partial", "missed", "skipped")]
-        n = 0
-        for w in reversed(past):
-            if w["status"] == "missed":
-                break
-            if w["status"] != "skipped":      # a deliberate skip neither extends nor breaks the streak
-                n += 1
-        return n
+        from .crew import streak_of
+        return streak_of(self.db, self.today())
 
     def journey(self) -> dict | None:
         """The whole plan as phase segments plus where the athlete is now."""

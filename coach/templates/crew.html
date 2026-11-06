@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block body %}
+<div class="kick rise">Run together</div><h1 class="lt rise">Crew</h1>
+{% if not member %}
+<section class="card rise"><h2>Join the crew</h2>
+  <p class="sm" style="margin-bottom:12px">Friends on this server who join can see each other's:</p>
+  <ul class="sm" style="margin:0 0 14px 18px"><li>first name</li><li>this week's distance and number of runs</li><li>current streak</li><li>goal and days to race</li></ul>
+  <p class="sm mut" style="margin-bottom:16px">Never your routes, paces, heart rate, feedback or chats. You can leave at any time and you disappear immediately.</p>
+  <form method="post" action="/crew/join"><button>Join the crew</button></form>
+</section>
+{% else %}
+<p class="sub rise">This week, ranked by distance. Send a cheer (one per person per week).</p>
+{% if people|length < 2 %}<section class="card rise"><p class="sm">You're the only one here so far. Friends who create an account on this server can opt in from their Me tab.</p></section>{% endif %}
+{% for c in people %}
+<section class="card rise crew-card{{ ' me' if c.me }}">
+  <div class="row" style="align-items:center;justify-content:space-between">
+    <div><b>{{ c.first_name }}{{ ' (you)' if c.me }}</b>
+      <div class="xs mut">{{ c.goal }}{% if c.days_to_race is not none %} · {{ c.days_to_race }} days to go{% endif %}</div></div>
+    <div style="text-align:right"><b class="num">{{ c.week_km|dist(c.units, false) }}</b><small> {{ c.units }}</small>
+      <div class="xs mut">{{ c.runs }} run{{ '' if c.runs == 1 else 's' }}{% if c.streak >= 2 %} · 🔥 {{ c.streak }}{% endif %}</div></div>
+  </div>
+  {% if c.kudos %}<div class="sm" style="margin-top:8px" aria-label="Cheers received">{{ c.kudos|join(' ') }}</div>{% endif %}
+  {% if not c.me %}
+  <form method="post" action="/crew/kudos/{{ c.user_id }}" class="row" style="margin-top:10px;gap:8px">
+    {% for e in emoji %}<button name="emoji" value="{{ e }}" class="sec sm grow" aria-label="Cheer {{ e }}" style="{{ 'outline:2px solid var(--hl)' if c.given == e }}">{{ e }}</button>{% endfor %}
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+<form method="post" action="/crew/leave" class="rise" style="margin-top:8px" onsubmit="return confirm('Leave the crew? Others will stop seeing your stats.')"><button class="danger sm" style="width:100%">Leave the crew</button></form>
+{% endif %}
+{% endblock %}

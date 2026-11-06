@@ -143,6 +143,19 @@ class DB:
             r = c.execute("select user_id from kv where key=? and value=?", (key, json.dumps(value))).fetchone()
         return r["user_id"] if r else None
 
+    def user_ids_with_kv(self, key: str, value) -> list[int]:
+        with self.conn() as c:
+            return [r["user_id"] for r in c.execute("select user_id from kv where key=? and value=? order by user_id", (key, json.dumps(value)))]
+
+    def give_kudos(self, to_user: int, week_start: str, emoji: str) -> None:
+        with self.conn() as c:
+            c.execute("insert into kudos values(?,?,?,?,?) on conflict(from_user,to_user,week_start) do update set emoji=excluded.emoji",
+                      (self.uid, to_user, week_start, emoji, _now()))
+
+    def kudos_for_week(self, week_start: str) -> list[dict]:
+        with self.conn() as c:
+            return [dict(r) for r in c.execute("select from_user, to_user, emoji from kudos where week_start=?", (week_start,))]
+
     def strava_user_ids(self) -> list[int]:
         with self.conn() as c:
             return [r["user_id"] for r in c.execute("select user_id from kv where key='strava_token'")]
