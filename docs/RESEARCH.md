@@ -82,7 +82,7 @@ never above the long-run cap.
 
 **Used in code.** `long_run ≤ min(share × week, event cap, time cap, the day's available minutes)`. For 5K/10K the share is 40% with
 3 runs a week (Higdon Novice ≈ 37%), otherwise 30% (25% at ≥64 km/week). For half/marathon it is 35%/40%, because those plans
-routinely exceed 25–30% (claude-coach: 28–35 km long runs at 60–90 km/week) and the 150/240-minute cap and the event caps
+routinely exceed 25–30% (claude-coach: 28–35 km long runs at 60–90 km/week) and the 150/300-minute cap and the event caps
 still bound them (conf. C for the half/marathon shares). Event caps: claude-coach values, scaled down for beginners.
 
 ## 5. Intensity: how much hard running

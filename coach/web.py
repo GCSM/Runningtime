@@ -31,7 +31,7 @@ from .strava import StravaClient, StravaError
 
 log = logging.getLogger("coach")
 HERE = Path(__file__).parent
-RUN_LENGTHS = [("Short", 40), ("Medium", 60), ("Long", 90), ("Extra long", 150), ("Max long", 240)]   # longest run that fits a given day, in minutes
+RUN_LENGTHS = [("Short", 40), ("Medium", 60), ("Long", 90), ("Extra long", 150), ("Max long", 240), ("Open-ended", 300)]   # longest run that fits a given day, in minutes
 PRESETS = {"5K": 5.0, "10K": 10.0, "Half marathon": 21.0975, "Marathon": 42.195}
 PUBLIC_PATHS = {"/login", "/signup", "/healthz"}
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

@@ -110,7 +110,7 @@ def test_long_run_caps_follow_claude_coach_event_targets():
     for g in K.ANCHORS:
         caps = [K.long_run_cap_km(g, lv) for lv in K.LEVELS]
         assert caps == sorted(caps)
-    assert K.long_run_max_minutes(42.195) == 240 and K.long_run_max_minutes(10) == 150
+    assert K.long_run_max_minutes(42.195) == 300 and K.long_run_max_minutes(10) == 150
 
 
 def test_long_run_share_depends_on_distance_and_run_days():
@@ -238,3 +238,10 @@ def test_max_long_lets_a_slow_marathoner_reach_a_real_long_run_but_km_caps_still
     assert K.long_run_km(90, 42.195, "intermediate", 5, 210, slow) == 28.0
     assert K.long_run_km(110, 42.195, "advanced", 6, 240, 330.0) == 35.0            # fast runner: capped by distance, not time
     assert K.long_run_km(70, 21.0975, "intermediate", 5, 240, slow) <= 20.0         # half marathon cap unchanged
+
+
+def test_a_six_hour_marathoner_can_still_cover_the_full_long_run():
+    pace = 540.0                                                     # 9:00/km easy
+    assert K.long_run_km(90, 42.195, "beginner", 5, 300, pace) == 28.0      # time allows 33 km; the beginner distance cap (28 km) binds
+    assert K.long_run_km(90, 42.195, "intermediate", 5, 300, pace) == 32.0  # 300 min = 33.3 km, capped at 32
+    assert K.long_run_km(90, 42.195, "intermediate", 5, 240, pace) == 26.5  # a 240-minute day would have cost 5.5 km
