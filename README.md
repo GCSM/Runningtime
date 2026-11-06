@@ -96,6 +96,17 @@ at low effort, with a compact context (about 1k tokens) and short replies, so a 
 every action is validated against your real plan, again when applied. Mentions of pain always produce an ease-off
 suggestion. Settings: `COACH_CHAT_MODEL`, `COACH_CHAT_EFFORT`, `CHAT_MESSAGES_PER_DAY`.
 
+### Crew, appearance and offline
+
+- **Crew** (Me → Crew): opt in to see friends on the same server. Shared: first name, this week's distance and run count,
+  streak, goal and days to race. Never routes, paces, heart rate, feedback or chats. One cheer (👏🔥💪) per person per week.
+  Leaving removes you immediately; you can't see the crew unless you're in it.
+- **Appearance** (Me): Auto / Light / Dark, remembered per device.
+- **First run** is a short guided setup; returning users get the full form.
+- **Pull down** on Today/Plan/Progress/Me to sync Strava (or refresh if not connected).
+- **Offline**: browsers only allow service workers on HTTPS or localhost, so on a plain-HTTP LAN the app simply stays
+  online-only. Behind HTTPS it caches the static files and your last-viewed tabs, and wipes them when you sign out.
+
 ## Develop
 ```bash
 pip install -r requirements-dev.txt && pytest

@@ -115,7 +115,7 @@
 <section class="card rise">
   <h2>Check in with your coach</h2>
   <form method="post" action="/review" data-job class="stack">
-    <textarea name="note" placeholder="How did it feel? Any niggles, travel, or schedule changes?" rows="3"></textarea>
+    <textarea name="note" aria-label="Note for your coach" placeholder="How did it feel? Any niggles, travel, or schedule changes?" rows="3"></textarea>
     <button>{{ 'Sync Strava & adjust plan' if d.strava_connected else 'Adjust my plan' }}</button>
   </form>
 </section>

@@ -41,7 +41,7 @@
     {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}
     <div class="wk-act">
       <form method="post" action="/workout/{{ w.id }}/move"><input type="hidden" name="next" value="/plan">
-        <input type="date" name="to_date" min="{{ today }}" max="{{ race_date }}" required aria-label="Move to date"><button class="sec sm">Move</button></form>
+        <input type="date" name="to_date" style="min-height:44px" min="{{ today }}" max="{{ race_date }}" required aria-label="Move to date"><button class="sec sm">Move</button></form>
       <form method="post" action="/workout/{{ w.id }}/skip"><input type="hidden" name="next" value="/plan"><button class="sec sm">Skip</button></form>
     </div>
     <p class="xs mut" style="margin-top:6px">Moving onto a day that already has a run swaps the two.</p>

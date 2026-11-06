@@ -73,7 +73,7 @@ if(t==="auto")document.documentElement.removeAttribute("data-theme");else docume
 
 <section class="card"><h2>Account</h2>
   <form method="post" action="/logout"><button class="sec">Sign out</button></form>
-  <details style="margin-top:16px"><summary class="sm b" style="color:var(--bad)">Delete account…</summary>
+  <details style="margin-top:16px"><summary class="sm b" style="color:var(--bad);padding:12px 0">Delete account…</summary>
     <form method="post" action="/account/delete" class="stack" style="margin-top:12px" onsubmit="return confirm('Delete your account and all training data? This cannot be undone.')">
       <p class="sm mut">This permanently deletes your plan, synced runs and Strava connection. Type your email to confirm.</p>
       <input type="email" name="confirm" placeholder="{{ user.email }}" autocapitalize="none" required><button class="danger">Delete everything</button></form></details>
