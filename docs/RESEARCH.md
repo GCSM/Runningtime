@@ -1,6 +1,6 @@
 # Training-plan research
 
-What published running plans and coaching literature say, and how Running Coach uses it. Every number in
+What published running plans and coaching literature say, and how RunningTime uses it. Every number in
 `coach/knowledge.py` traces back to a row here. Nothing here is a copy of anyone's plan: only facts about plans
 (structure, ranges, rules of thumb) are recorded, in our own words.
 

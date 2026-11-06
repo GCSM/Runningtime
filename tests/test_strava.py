@@ -327,3 +327,38 @@ def test_background_sync_of_a_revoked_user_is_a_warning_not_a_crash(tmp_path, mo
         svc.background_tick()
     assert db.for_user(1).kv_get("strava_token") is None                         # next tick won't retry a dead connection
     svc.background_tick()                                                         # not connected any more: silently skipped
+
+
+# ---- onboarding: Strava is offered before the first plan ----------------------------------------------------
+def test_first_plan_waits_for_a_strava_choice_then_proceeds(tmp_path):
+    from test_scenarios import SETUP
+    c, db, _ = make(tmp_path)
+    u = new_user(c, "a@example.com")
+    u.post("/setup", data={**SETUP, "baseline": "25"})
+    page = u.get("/").text
+    assert "Connect Strava first" in page and 'href="/strava/connect"' in page and "Skip for now" in page and "Generate my plan" not in page
+    blocked = u.post("/plan/generate", headers={"X-Requested-With": "fetch"})
+    assert blocked.status_code == 409 and "Connect Strava first" in blocked.json()["error"] and db.for_user(1).get_workouts() == []
+    assert "Connect Strava first" in u.post("/plan/generate", follow_redirects=True).text      # plain form post: same rule, shown as a message
+    u.post("/strava/skip")
+    assert "Generate my plan" in u.get("/").text and "Connect Strava first" not in u.get("/").text
+    assert u.post("/plan/generate", headers={"X-Requested-With": "fetch"}).status_code == 200
+
+
+def test_connecting_returns_to_the_dashboard_ready_to_generate(tmp_path, monkeypatch):
+    from test_scenarios import SETUP
+    c, db, _ = make(tmp_path)
+    u = new_user(c, "a@example.com")
+    u.post("/setup", data={**SETUP, "baseline": "25"})
+    state = connect_params(u)["state"]
+    patch_http(monkeypatch, Recorder(post=TOKEN_OK, get=Resp(200, [])))
+    r = u.get("/strava/callback", params={"code": "abc", "scope": "read,activity:read_all", "state": state}, follow_redirects=True)
+    assert "Strava connected" in r.text and "Generate my plan" in r.text and r.url.path == "/"
+
+
+def test_no_strava_prompt_when_the_server_has_no_strava_app(tmp_path):
+    from test_scenarios import SETUP
+    from test_chat import web
+    from test_chat import FakeChat  # noqa: F401
+    c, _ = web(tmp_path, FakeChat())
+    assert c.get("/").status_code == 200                                                         # FakeStrava isn't "configured": plan generated without a prompt

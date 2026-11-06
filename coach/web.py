@@ -48,6 +48,17 @@ def parse_hms(s: str) -> int | None:
     return parts[0] * 3600 + parts[1] * 60 + parts[2]
 
 
+def goal_seconds(f) -> int | None:
+    """Target time from separate h / m / s boxes (a phone number pad has no colon); the old single h:mm:ss field still works."""
+    parts = [str(f.get(k) or "").strip() for k in ("goal_h", "goal_m", "goal_s")]
+    if any(parts):
+        h, m, s = (int(x or 0) for x in parts)
+        if min(h, m, s) < 0 or m > 59 or s > 59:
+            raise ValueError("target time: minutes and seconds must be 0-59")
+        return (h * 3600 + m * 60 + s) or None
+    return parse_hms(str(f.get("goal_time", "")))
+
+
 def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
@@ -139,7 +150,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         if task:
             task.cancel()
 
-    app = FastAPI(lifespan=lifespan, title="Running Coach")
+    app = FastAPI(lifespan=lifespan, title="RunningTime")
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     templates = Jinja2Templates(directory=str(HERE / "templates"))
 
@@ -391,7 +402,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             baseline_km = float(raw_base) * to_km
             p = Profile(
                 name=request.state.user["name"], goal_label=label, goal_km=goal_km, race_date=date.fromisoformat(str(f.get("race_date"))),
-                goal_time_s=parse_hms(str(f.get("goal_time", ""))), baseline_km=baseline_km,
+                goal_time_s=goal_seconds(f), baseline_km=baseline_km,
                 experience=f.get("experience", "intermediate"), availability=avail, long_run_day=str(f.get("long_run_day", "sun")),
                 notes=str(f.get("notes", "")), units=units,
             )
@@ -405,12 +416,17 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back("/setup", err=f"Check your inputs: {e}")
         had_plan = bool(svc.db.get_workouts())
         svc.db.save_profile(p)
-        return back("/", "Saved. Tap “Review & adjust” to re-plan around the changes." if had_plan else "Saved. Now let’s build your plan.")
+        return back("/", "Saved. Tap “Review & adjust” to re-plan around the changes." if had_plan else "Saved. One last step before your plan.")
 
     # ---- actions ---------------------------------------------------------
     @app.post("/plan/generate")
     def generate(request: Request):
         uid = request.state.user["id"]
+        if request.state.svc.needs_strava_choice():
+            msg = "Connect Strava first so your plan starts from your real runs, or choose “Skip for now”."
+            if request.headers.get("x-requested-with"):
+                return JSONResponse({"error": msg}, status_code=409)
+            return back("/", err=msg)
         job = start_job(uid, "generate", "Your coach is building your plan", request.state.svc.generate_plan, "Your plan is ready.")
         return job_response(request, uid, job)
 
@@ -593,7 +609,13 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             n = svc.sync()
         except Exception as e:
             return back("/me", err=f"Strava connection failed: {e}")
-        return back("/me", f"Strava connected; imported {n} recent runs.")
+        msg = f"Strava connected; imported {n} recent runs."
+        return back("/" if svc.db.get_profile() and not svc.db.get_workouts() else "/me", msg)
+
+    @app.post("/strava/skip")
+    def strava_skip(request: Request):
+        request.state.svc.db.kv_set("strava_skipped", True)
+        return back("/", "No problem. You can connect Strava any time from the Me tab; your plan will start from the weekly distance you entered.")
 
     @app.post("/strava/disconnect")
     def strava_disconnect(request: Request):

@@ -1,4 +1,4 @@
-/* Running Coach — dark-first, athletic, built for the phone. */
+/* RunningTime — dark-first, athletic, built for the phone. */
 :root{
   --bg:#f3f2ee;--card:#fff;--cardb:rgba(0,0,0,.05);--fg:#0b0b10;--mut:#6d6d75;--line:rgba(10,10,20,.1);--fill:rgba(10,10,20,.06);
   --hl:#ff5a1f;--hl2:#ff2d75;--btn:#0b0b10;--btnfg:#fff;--glow:rgba(255,90,31,.16);
@@ -288,3 +288,4 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
 
 .ptr{position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translate(-50%,0);width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
   background:var(--card);box-shadow:var(--shadow);border:1px solid var(--cardb);font-weight:800;opacity:0;pointer-events:none;z-index:60;transition:opacity .15s}
+.wordmark{font-size:20px;font-weight:800;letter-spacing:-.02em;margin-bottom:10px}.wordmark b{color:var(--hl);font-style:italic}

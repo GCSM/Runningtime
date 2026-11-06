@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install / update Running Coach inside a Debian or Ubuntu LXC container, and configure it automatically.
+# Install / update RunningTime inside a Debian or Ubuntu LXC container, and configure it automatically.
 #
 #   git clone <repo> /opt/running-coach && cd /opt/running-coach && sudo bash deploy/install.sh
 #
@@ -97,7 +97,7 @@ systemctl restart running-coach
 echo "==> Waiting for the service"
 for _ in $(seq 1 20); do
   if curl -fsS "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
-    echo "Running Coach is up."
+    echo "RunningTime is up."
     [ "$NEW_ENV" = 1 ] && echo "Open $(grep '^PUBLIC_URL=' "$ENV_FILE" | cut -d= -f2-) and create your account."
     exit 0
   fi

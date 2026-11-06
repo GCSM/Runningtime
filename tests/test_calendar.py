@@ -92,8 +92,8 @@ def test_usual_time_parsing(text, expect):
 # ============================================================================================ feed structure ====
 def test_calendar_envelope_and_required_properties():
     cal = parse(feed([w(1, TODAY)]))
-    assert cal["props"]["VERSION"][1] == "2.0" and cal["props"]["PRODID"][1].startswith("-//Running Coach")
-    assert cal["props"]["METHOD"][1] == "PUBLISH" and cal["props"]["X-WR-CALNAME"][1] == "Running Coach"
+    assert cal["props"]["VERSION"][1] == "2.0" and cal["props"]["PRODID"][1].startswith("-//RunningTime")
+    assert cal["props"]["METHOD"][1] == "PUBLISH" and cal["props"]["X-WR-CALNAME"][1] == "RunningTime"
     assert cal["props"]["REFRESH-INTERVAL"][0] == {"VALUE": "DURATION"} and cal["props"]["REFRESH-INTERVAL"][1] == "PT6H"
     ev = cal["events"][0]["props"]
     for required in ("UID", "DTSTAMP", "DTSTART", "SUMMARY"):
@@ -147,7 +147,7 @@ def test_description_carries_pace_duration_link_and_survives_special_characters(
     ev = parse(feed([w(1, TODAY, desc=nasty, pace="5:00/km, RPE 7; hard", title="Tempo, \"4 x 1.5\"; hills")]))["events"][0]["props"]
     d = unescape(ev["DESCRIPTION"][1])
     assert "Warm up; 4 x 1.5 km, steady\nCool down \\ done" in d and "Pace: 5:00/km, RPE 7; hard" in d and "About 50 min." in d
-    assert d.rstrip().endswith("Open Running Coach: http://coach.lan/")
+    assert d.rstrip().endswith("Open RunningTime: http://coach.lan/")
     assert unescape(ev["SUMMARY"][1]).split(" ", 1)[1].startswith('Tempo, "4 x 1.5"; hills')
 
 
@@ -294,7 +294,7 @@ def test_feed_is_accepted_by_an_independent_icalendar_parser():
                  w(3, date(2026, 11, 8), typ="race", title="Race day: 10K", km=10.0)], av)
     cal = icalendar.Calendar.from_ical(text)
     events = cal.walk("VEVENT")
-    assert len(events) == 3 and str(cal["X-WR-CALNAME"]) == "Running Coach"
+    assert len(events) == 3 and str(cal["X-WR-CALNAME"]) == "RunningTime"
     first = events[0]
     assert first["DTSTART"].dt == datetime(2026, 11, 5, 6, 30) and first["DTEND"].dt == datetime(2026, 11, 5, 7, 20)
     assert str(first["SUMMARY"]).endswith('Tempo, "4 x 1.5"; hills (8.0 km)') and str(first["DESCRIPTION"]).startswith("Warm up; 4 x 1.5 km, steady\nCool down")

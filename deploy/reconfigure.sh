@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Change the settings of an already-installed Running Coach, then restart it.
+# Change the settings of an already-installed RunningTime, then restart it.
 #
 #   sudo bash deploy/reconfigure.sh                      # walk through every setting (Enter keeps the current value)
 #   sudo bash deploy/reconfigure.sh --show               # print current settings (secrets masked) and exit
@@ -48,7 +48,7 @@ run_check() {  # test the Anthropic key/model as the service sees them
   else "$APP_DIR/.venv/bin/python" -m coach.check "$ENV_FILE"; fi
 }
 
-[ -f "$ENV_FILE" ] || die "$ENV_FILE not found. Is Running Coach installed? Run deploy/install.sh first."
+[ -f "$ENV_FILE" ] || die "$ENV_FILE not found. Is RunningTime installed? Run deploy/install.sh first."
 if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
   [ "$(id -u)" -eq 0 ] || die "Run as root."
   systemctl cat "$SERVICE" >/dev/null 2>&1 || die "Service '$SERVICE' isn't installed. Run deploy/install.sh first."
@@ -200,7 +200,7 @@ healthy() {
   return 1
 }
 if healthy; then
-  echo "Running Coach is up with the new settings. (Previous config kept at $BACKUP)"
+  echo "RunningTime is up with the new settings. (Previous config kept at $BACKUP)"
   new_key="$(get_var ANTHROPIC_API_KEY)"; new_model="$(get_var COACH_MODEL)"
   old_key="$(printf '%s\n' "$BEFORE" | grep '^ANTHROPIC_API_KEY=' | tail -n1 | cut -d= -f2- || true)"
   old_model="$(printf '%s\n' "$BEFORE" | grep '^COACH_MODEL=' | tail -n1 | cut -d= -f2- || true)"

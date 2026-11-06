@@ -51,9 +51,9 @@ def _dt(d: datetime) -> str:
 
 
 def build_calendar(workouts: list[dict], *, availability: dict, units: str, user_id: int, base_url: str, now: datetime,
-                   name: str = "Running Coach", default_minutes: int = 45) -> str:
+                   name: str = "RunningTime", default_minutes: int = 45) -> str:
     host = re.sub(r"^https?://", "", base_url).split("/")[0] or "localhost"
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Running Coach//Plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//RunningTime//Plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
              f"X-WR-CALNAME:{escape_text(name)}", "REFRESH-INTERVAL;VALUE=DURATION:PT6H", "X-PUBLISHED-TTL:PT6H"]
     day_keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     for w in sorted(workouts, key=lambda w: w["date"]):
@@ -69,7 +69,7 @@ def build_calendar(workouts: list[dict], *, availability: dict, units: str, user
             desc.append(f"Pace: {w['pace_guidance']}")
         if w.get("duration_min"):
             desc.append(f"About {w['duration_min']} min.")
-        desc.append(f"Open Running Coach: {base_url.rstrip('/')}/")
+        desc.append(f"Open RunningTime: {base_url.rstrip('/')}/")
         t = parse_time((availability.get(day_keys[d.weekday()]) or {}).get("time", ""))
         ev = ["BEGIN:VEVENT", f"UID:rc-{user_id}-w{w['id']}@{host}", f"DTSTAMP:{now.strftime('%Y%m%dT%H%M%SZ')}"]
         if t:

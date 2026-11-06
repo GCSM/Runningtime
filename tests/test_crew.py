@@ -115,3 +115,19 @@ def test_service_worker_is_served_from_root_and_never_caches_posts_or_api(tmp_pa
     assert r.status_code == 200 and "javascript" in r.headers["content-type"] and r.headers["service-worker-allowed"] == "/"
     assert 'r.method !== "GET"' in r.text and '"/api"' in r.text and "isSecureContext" in a.get("/").text
     assert "caches.delete" in a.get("/me").text                                          # cached pages are wiped at sign-out
+
+
+def test_target_time_uses_separate_number_boxes_and_the_old_field_still_works(tmp_path):
+    from coach.web import goal_seconds
+    assert goal_seconds({"goal_h": "1", "goal_m": "45", "goal_s": "30"}) == 6330
+    assert goal_seconds({"goal_h": "", "goal_m": "50", "goal_s": ""}) == 3000            # blanks count as zero: a 5K in 50 minutes
+    assert goal_seconds({"goal_h": "", "goal_m": "", "goal_s": ""}) is None
+    assert goal_seconds({"goal_time": "50:00"}) == 3000
+    with pytest.raises(ValueError):
+        goal_seconds({"goal_m": "75"})
+    (a, *_), db = build(tmp_path, 1)
+    page = a.get("/setup").text
+    assert 'name="goal_m"' in page and 'inputmode="numeric"' in page and 'name="goal_time"' not in page
+    a.post("/setup", data={**SETUP, "baseline": "25", "goal_h": "0", "goal_m": "49", "goal_s": "30"})
+    assert db.for_user(1).get_profile().goal_time_s == 2970
+    assert 'value="49"' in a.get("/setup").text and 'value="30"' in a.get("/setup").text

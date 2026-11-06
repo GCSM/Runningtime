@@ -11,7 +11,15 @@
   </div>
   <label class="f custom"><span class="lab">Custom distance</span><input type="number" name="goal_custom" inputmode="decimal" step="0.1" min="1" placeholder="e.g. 15"></label>
   <label class="f" style="margin-top:16px"><span class="lab">Race date</span><input type="date" name="race_date" required value="{{ p.race_date if p }}"></label>
-  <label class="f"><span class="lab">Target finish time (optional)</span><input type="text" name="goal_time" inputmode="numeric" placeholder="1:45:00" pattern="[0-9:]*" value="{{ (p.goal_time_s // 3600 ~ ':' ~ '%02d' % (p.goal_time_s % 3600 // 60) ~ ':' ~ '%02d' % (p.goal_time_s % 60)) if p and p.goal_time_s }}"></label>
+  <div class="f"><span class="lab" id="gt-lab">Target finish time (optional)</span>
+    {% set gs = p.goal_time_s if p and p.goal_time_s else none %}
+    <div class="row" role="group" aria-labelledby="gt-lab" style="gap:8px;align-items:center">
+      <input type="number" name="goal_h" inputmode="numeric" min="0" max="9" placeholder="h" aria-label="Hours" value="{{ gs // 3600 if gs is not none }}" style="text-align:center">
+      <span class="mut">:</span>
+      <input type="number" name="goal_m" inputmode="numeric" min="0" max="59" placeholder="mm" aria-label="Minutes" value="{{ '%02d' % (gs % 3600 // 60) if gs is not none }}" style="text-align:center">
+      <span class="mut">:</span>
+      <input type="number" name="goal_s" inputmode="numeric" min="0" max="59" placeholder="ss" aria-label="Seconds" value="{{ '%02d' % (gs % 60) if gs is not none }}" style="text-align:center">
+    </div></div>
 </section>
 
 <section class="card">

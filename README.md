@@ -1,4 +1,4 @@
-# Running Coach
+# RunningTime
 
 A self-hosted, multi-user AI running coach. Tell it your race, your date and when you can run; it builds a periodized
 plan, then **re-plans as you actually train** by reading your runs from Strava. Mobile-first UI (installable on iPhone
@@ -106,6 +106,16 @@ suggestion. Settings: `COACH_CHAT_MODEL`, `COACH_CHAT_EFFORT`, `CHAT_MESSAGES_PE
 - **Pull down** on Today/Plan/Progress/Me to sync Strava (or refresh if not connected).
 - **Offline**: browsers only allow service workers on HTTPS or localhost, so on a plain-HTTP LAN the app simply stays
   online-only. Behind HTTPS it caches the static files and your last-viewed tabs, and wipes them when you sign out.
+
+### What leaves your server
+
+- **Strava**: only your *running* activities from the last 90 days are imported (older history is never fetched), and
+  they're stored in this server's SQLite file. Nothing is read from any other service.
+- **Anthropic (the model)** never receives your run list. Plan generation gets aggregates only: weekly km for the last
+  6 complete weeks, an easy-pace estimate, your longest run in the last 28 days, km done this week and days since your last
+  run, plus your goal, schedule and notes. Routes, heart rate, splits and run names are never sent. Chat adds your next
+  10 days of workouts, last 7 days of run summaries and any "how did it feel" notes.
+- Runs from before the plan started still count as *history* (they set your starting volume and pace), but don't appear in the plan.
 
 ## Develop
 ```bash

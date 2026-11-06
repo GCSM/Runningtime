@@ -1,4 +1,4 @@
-// Running Coach service worker: makes the app open instantly and show your last plan when offline.
+// RunningTime service worker: makes the app open instantly and show your last plan when offline.
 // Static files are cached; pages are network-first (always fresh when online). Never touches POSTs or /api.
 const V = "rc-v1", STATIC = V + "-static", PAGES = V + "-pages";
 const TABS = ["/", "/plan", "/progress", "/coach", "/me"];

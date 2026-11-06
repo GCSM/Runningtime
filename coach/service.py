@@ -353,12 +353,18 @@ class CoachService(ActionsMixin, ProgressMixin):
                 break
         return out
 
+    def needs_strava_choice(self) -> bool:
+        """First plan, Strava is available on this server, and the athlete hasn't connected or chosen to skip yet."""
+        return (getattr(self.strava, "configured", False) and not self.strava.connected
+                and not self.db.kv_get("strava_skipped") and not self.db.get_workouts())
+
     # ---- views -----------------------------------------------------------
     def dashboard(self) -> dict:
         today = self.today()
         p = self.db.get_profile()
         data: dict = {"profile": p, "today": today, "strava_connected": self.strava.connected,
                       "strava_ready": getattr(self.strava, "configured", False),
+                      "strava_skipped": bool(self.db.kv_get("strava_skipped")),
 
                       "strava_name": self.strava.athlete_name() if self.strava.connected else "",
                       "last_sync": self.db.kv_get("last_sync"), "log": self.db.recent_log(1)}

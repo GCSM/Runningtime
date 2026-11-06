@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% set bare = True %}{% block body %}
-<div class="brand"><img src="/static/icon-180.png" alt=""><div><h1>Run smarter.</h1>
+<div class="brand"><img src="/static/icon-180.png" alt=""><div><div class="wordmark">Running<b>Time</b></div><h1>Run smarter.</h1>
 <p class="mut" style="margin-top:8px">A training plan that adapts to how you actually run.</p></div></div>
 <form method="post" action="/{{ mode }}" class="card stack">
   {% if mode == 'signup' %}<label class="f"><span class="lab">Name</span><input type="text" name="name" autocomplete="given-name" required></label>{% endif %}

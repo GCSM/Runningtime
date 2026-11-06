@@ -33,11 +33,20 @@
 {% endif %}
 
 {% if not d.has_plan %}
+  {% if d.strava_ready and not d.strava_connected and not d.strava_skipped %}
+  <div class="card empty rise">
+    <div class="ico">🏃</div><h3 style="font-size:22px;font-weight:800">Connect Strava first</h3>
+    <p class="mut" style="margin:6px 0 14px">Your plan starts from what you actually run today, not a guess. RunningTime reads your recent runs (the last 90 days), keeps them on this server, and tells the coach only weekly totals, your easy pace and how long since your last run. Never routes or heart rate.</p>
+    <a class="btn" href="/strava/connect" style="display:flex;align-items:center;justify-content:center">Connect with Strava</a>
+    <form method="post" action="/strava/skip" style="margin-top:10px"><button class="sec">Skip for now</button></form>
+  </div>
+  {% else %}
   <div class="card empty rise">
     <div class="ico">🗓️</div><h3 style="font-size:22px;font-weight:800">Let’s build your plan</h3>
     <p class="mut" style="margin:6px 0 18px">Your coach will map out every week from today to race day{% if d.strava_connected %}, starting from your recent Strava runs{% endif %}.</p>
     <form method="post" action="/plan/generate" data-job><button>Generate my plan</button></form>
   </div>
+  {% endif %}
 {% elif w %}
   <section class="hero t-{{ w.type }} rise {{ 'finished' if w.status == 'completed' }}" data-word="{{ w.type }}">
     <div class="k"><span class="pill">{{ w.type }}</span>{% if w.type == 'race' %}Race day{% else %}Today’s run{% endif %}</div>
