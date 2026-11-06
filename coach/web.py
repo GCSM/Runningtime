@@ -424,6 +424,15 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         return do(go, safe_next(next), lambda r: ("Thanks for telling me. I've eased off the next week's hard sessions; see your coach note."
                                                   if r["pain"] else "Thanks, noted. Your coach will use this."))
 
+    @app.post("/api/badges/seen")
+    def badges_seen(request: Request):
+        request.state.svc.mark_badges_seen()
+        return JSONResponse({"ok": True})
+
+    @app.post("/race-checklist")
+    def race_checklist(request: Request, item: str = Form(""), checked: str = Form("1"), next: str = Form("/")):
+        return do(lambda: request.state.svc.toggle_checklist(item, checked == "1"), safe_next(next))
+
     @app.get("/api/job")
     def api_job(request: Request):
         return JSONResponse(public_job(request.state.user["id"]), headers={"Cache-Control": "no-store"})

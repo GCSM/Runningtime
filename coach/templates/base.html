@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default"><meta name="apple-mobile-web-app-title" content="Coach">
 <link rel="apple-touch-icon" href="/static/icon-180.png"><link rel="icon" href="/static/icon-192.png"><link rel="manifest" href="/static/manifest.webmanifest">
-<link rel="stylesheet" href="/static/app.css?v=12">
+<link rel="stylesheet" href="/static/app.css?v=13">
 </head><body data-auth="{{ 1 if user else '' }}">
 {% if flash %}<div class="toast" role="status">{{ flash }}</div>{% endif %}
 {% if error %}<div class="toast err" role="alert">{{ error }}</div>{% endif %}
@@ -38,7 +38,23 @@
       const node=[...el.childNodes].find(n=>n.nodeType===3);  /* animate only the number, keep child elements like the unit */
       if(isNaN(t)||!node)return;(function f(n){const k=Math.min(1,(n-t0)/800),e=1-Math.pow(1-k,3);node.nodeValue=(t*e).toFixed(dp);if(k<1)requestAnimationFrame(f)})(t0)});
     const sc=$('.col.cur');if(sc&&sc.scrollIntoView)sc.scrollIntoView({inline:'center',block:'nearest'});
+    celebrate();
   };
+
+  /* Milestone celebration: shown once, then the server is told so it never repeats. */
+  function celebrate(){
+    const el=$('#celebrate');if(!el||el.dataset.done)return;el.dataset.done='1';
+    toast('🎉 New milestone: '+el.dataset.names);
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+      const c=document.createElement('canvas');c.className='confetti';c.width=innerWidth;c.height=innerHeight;document.body.appendChild(c);
+      const g=c.getContext('2d'),cols=['#c8ff3d','#2ee6c5','#ff5c8a','#ffb02e','#5ea0ff','#ffffff'];
+      const ps=Array.from({length:140},()=>({x:innerWidth/2,y:innerHeight*0.35,vx:(Math.random()-.5)*14,vy:-Math.random()*13-3,r:Math.random()*5+3,c:cols[Math.random()*cols.length|0],a:Math.random()*6.28,va:(Math.random()-.5)*.4}));
+      const t0=performance.now();(function f(n){g.clearRect(0,0,c.width,c.height);const k=(n-t0)/2600;
+        ps.forEach(p=>{p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.a+=p.va;g.save();g.globalAlpha=Math.max(0,1-k);g.translate(p.x,p.y);g.rotate(p.a);g.fillStyle=p.c;g.fillRect(-p.r,-p.r/2,p.r*2,p.r);g.restore()});
+        if(k<1)requestAnimationFrame(f);else c.remove()})(t0);
+    }
+    try{fetch('/api/badges/seen',{method:'POST',headers:{'X-Requested-With':'fetch'}})}catch(e){}
+  }
 
   function toast(msg,isErr){
     const d=document.createElement('div');d.className='toast'+(isErr?' err':'');d.setAttribute('role',isErr?'alert':'status');d.textContent=msg;

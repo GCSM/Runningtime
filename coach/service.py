@@ -11,6 +11,7 @@ from . import knowledge as K
 from .config import Settings
 from .db import DB
 from .actions import ActionsMixin
+from .progress_views import ProgressMixin
 from .errors import UserError  # noqa: F401  (re-exported for callers)
 from .runview import build_run_view
 from .strava import StravaError
@@ -38,7 +39,7 @@ class PlanInputs:
         return K.pace_text(self.paces_raw) if self.paces_raw else None
 
 
-class CoachService(ActionsMixin):
+class CoachService(ActionsMixin, ProgressMixin):
     def __init__(self, db: DB, settings: Settings, coach, strava, clock=None):
         self.db, self.settings, self.coach, self.strava = db, settings, coach, strava
         self.today = clock or settings.today
@@ -359,6 +360,9 @@ class CoachService(ActionsMixin):
         data["next_workout"] = next((w for w in self.db.get_workouts(today + timedelta(days=1)) if w["status"] == "planned"), None)
         data["streak"] = self.streak()
         data["pending_feedback"] = self.pending_feedback()
+        data["race"] = self.race_state()
+        data["new_badges"] = self.badges()["new"]
+        data["new_badge_text"] = " · ".join(f"{b['emoji']} {b['name']}" for b in data["new_badges"])
         tw = data["today_workout"]
         data["today_move_options"] = (self.move_options(tw["id"]) if tw and tw["status"] == "planned" and tw["type"] != "race" else [])
         data["pain_until"] = self.pain_until()
@@ -434,7 +438,7 @@ class CoachService(ActionsMixin):
         stats["hours"] = round(sum(a["moving_s"] for a in acts) / 3600, 1)
         stats["runs_logged"] = len(acts)
         stats["streak"] = self.streak()
-        return {"weeks": weeks, "stats": stats, "max": max([max(w["actual"], w["target"] or w["planned"]) for w in weeks] + [1])}
+        return {"fitness": self.fitness(), "heatmap": self.heatmap(), "badges": self.badges(), "weeks": weeks, "stats": stats, "max": max([max(w["actual"], w["target"] or w["planned"]) for w in weeks] + [1])}
 
 
 def _fmt_hms(s: int) -> str:

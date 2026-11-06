@@ -5,6 +5,18 @@
   {% if d.streak >= 2 %}<span class="pill hot" style="margin-bottom:14px">🔥 {{ d.streak }} run streak</span>{% endif %}
 </div>
 
+{% if d.race and d.race.mode == 'after' %}
+<section class="card rise" style="margin-top:10px"><div class="kick" style="margin:0 0 6px">{{ d.race.goal_label }} · {{ p.race_date|fmt_date('%b %-d') }}</div>
+  <h2 style="font-size:24px;text-transform:none;letter-spacing:-.02em;color:var(--fg);margin:0 0 8px">Race complete 🎉</h2>
+  {% if d.race.result %}{% set rs = d.race.result %}
+    <div class="row" style="gap:20px;align-items:flex-end"><div class="num" style="font-size:44px;line-height:1">{{ rs.time_s|dur }}</div>
+      <div class="sm mut">{{ rs.km|dist(units) }} · {{ rs.pace_s_km|pace(units) }}</div></div>
+    {% if rs.hit_goal is true %}<p class="b" style="margin-top:10px">You hit your goal time! 🏆</p>{% elif rs.hit_goal is false %}<p class="sm mut" style="margin-top:10px">A little off your goal time. A great base to build the next one from.</p>{% endif %}
+    <p style="margin-top:10px"><a href="/run/{{ rs.activity_id }}">Run details →</a></p>
+  {% else %}<p class="sm mut">How did it go? Sync Strava, or tell your coach in a check-in.</p>{% endif %}
+  <p style="margin-top:14px"><a class="btn" href="/setup">Set your next goal</a></p>
+</section>
+{% else %}
 <section class="card rise" style="margin-top:10px">
   <div class="race-tick">
     <div><div class="num n" data-count="{{ d.days_to_race }}">{{ d.days_to_race }}</div><div class="l">day{{ 's' if d.days_to_race != 1 }} to {{ p.goal_label }}</div></div>
@@ -18,6 +30,7 @@
   <div class="jlegend"><span>Week <b>{{ j.current }}</b> of {{ j.total }}</span><span style="text-transform:capitalize"><b>{{ j.phase }}</b> phase</span></div>
   {% endif %}
 </section>
+{% endif %}
 
 {% if not d.has_plan %}
   <div class="card empty rise">
@@ -57,6 +70,19 @@
   </section>
 {% endif %}
 
+{% if d.race and d.race.mode in ('week', 'day') %}{% set rc = d.race %}
+<section class="card rise" id="race-week"><h2>{{ 'Race day' if rc.mode == 'day' else 'Race week' }}</h2>
+  <p class="sm mut" style="margin:-4px 0 12px">{{ 'Good luck! Run the first few kilometres a touch easier than goal pace; it pays back late.' if rc.mode == 'day' else 'Keep the runs short and easy and trust your training. A general checklist:' }}</p>
+  <div class="checks">{% for c in rc.checklist %}
+    <form method="post" action="/race-checklist"><input type="hidden" name="item" value="{{ c.id }}"><input type="hidden" name="checked" value="{{ '0' if c.done else '1' }}">
+      <button class="check {{ 'done' if c.done }}" aria-pressed="{{ 'true' if c.done else 'false' }}"><span class="box">{{ '✓' if c.done }}</span><span>{{ c.text }}</span></button></form>{% endfor %}</div>
+  {% if rc.pace_plan %}
+  <div style="margin-top:16px"><div class="lab">Pace plan · even pace {{ rc.pace_s_km|pace(units) }}</div>
+    <table class="sm" style="width:100%">{% for cp in rc.pace_plan %}<tr><td class="mut" style="padding:3px 0">{{ cp.label }}</td><td class="b" style="text-align:right">{{ cp.elapsed_s|dur }}</td></tr>{% endfor %}</table></div>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if d.pending_feedback %}{% set pf = d.pending_feedback %}
 <section class="card rise" id="feedback"><h2>How did it feel?</h2>
   <p class="sm mut" style="margin:-4px 0 12px">{{ pf.activity.name or 'Run' }} · {{ (pf.activity.distance_m / 1000)|dist(units) }} · {{ pf.activity.date|fmt_date }}</p>
@@ -64,7 +90,7 @@
 </section>
 {% endif %}
 
-{% if d.has_plan %}
+{% if d.has_plan and not (d.race and d.race.mode == 'after') %}
 <section class="card rise">
   <h2>This week{% if d.week %} · {{ d.week.phase }}{{ ' (recovery)' if d.week.recovery }}{% endif %}</h2>
   <div class="row">
@@ -104,4 +130,5 @@
 {% if not d.strava_connected and d.strava_ready %}
 <a class="card row rise" href="/me" style="color:inherit"><div class="grow"><div class="b">Connect Strava</div><div class="sm mut">Link your account so your plan adapts to the runs you actually do.</div></div>{{ icon('chev') }}</a>
 {% endif %}
+{% if d.new_badges %}<div id="celebrate" data-names="{{ d.new_badge_text }}" hidden></div>{% endif %}
 {% endblock %}

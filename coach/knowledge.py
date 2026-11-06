@@ -335,3 +335,36 @@ class VolumeOutlook:
         if self.weeks_to_race < self.min_weeks:
             text += f" Heads-up: {self.min_weeks}+ weeks is usual for this goal at your level, so this is a compressed build."
         return text
+
+
+# ---- Race week (general guidance, deliberately conservative) ------------------------------------------------------
+def race_checklist(goal_km: float) -> list[tuple[str, str]]:
+    b = _bucket(goal_km)
+    items = [
+        ("kit", "Lay out your kit and shoes. Nothing new on race day."),
+        ("register", "Bib or registration and start time confirmed."),
+        ("travel", "Travel plan sorted, and aim to arrive 60–90 minutes early."),
+        ("sleep", "Look after your sleep over the two nights before."),
+        ("breakfast", "Breakfast you've eaten before long runs, 2–3 hours before the start."),
+        ("warmup", "Plan a warm-up: 10–15 easy minutes plus a few strides."),
+    ]
+    if b >= 21:
+        items += [("fuel", "Fuelling plan: only what you practised in training, and where you'll take it."),
+                  ("pace", "Know your pace plan and your split times."),
+                  ("chafe", "Anti-chafe and blister protection where you need it.")]
+    if b >= 42:
+        items.append(("shakeout", "A short, easy shakeout run the day before."))
+    return items
+
+
+def pace_plan(goal_km: float, goal_time_s: int, units: str = "km") -> list[dict]:
+    """Even-pace checkpoints every 5 (km or miles), then the finish. Times are elapsed."""
+    step_km = 5.0 * (KM_PER_MI if units == "mi" else 1.0)
+    unit = "mi" if units == "mi" else "km"
+    pace = goal_time_s / goal_km
+    out, k = [], 1
+    while step_km * k < goal_km - 0.4 * (KM_PER_MI if units == "mi" else 1.0):
+        out.append({"label": f"{5 * k} {unit}", "elapsed_s": round(pace * step_km * k)})
+        k += 1
+    out.append({"label": "Finish", "elapsed_s": goal_time_s})
+    return out

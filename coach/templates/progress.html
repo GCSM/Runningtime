@@ -3,7 +3,7 @@
 {% if pr.stats %}{% set s = pr.stats %}
 <p class="sub rise">How your training is stacking up against the plan.</p>
 <div class="stats rise">
-  <div class="stat big"><span>Total distance</span><b class="num" data-count="{{ s.total_km|dist(units, false) }}">{{ s.total_km|dist(units, false) }}<small style="color:inherit;opacity:.7"> {{ units }}</small></b></div>
+  <div class="stat big"><span>Total distance · this plan</span><b class="num" data-count="{{ s.total_km|dist(units, false) }}">{{ s.total_km|dist(units, false) }}<small style="color:inherit;opacity:.7"> {{ units }}</small></b></div>
   <div class="stat"><span>Completed</span><b class="num">{{ s.completed }}<small> / {{ s.scheduled }}</small></b></div>
   <div class="stat"><span>Consistency</span><b class="num">{{ (s.adherence_pct ~ '%') if s.adherence_pct is not none else '–' }}</b></div>
 </div>
@@ -25,6 +25,42 @@
   </div>
   {% if s.streak >= 2 %}<p class="sm" style="margin-top:16px;text-align:center"><span class="pill hot">🔥 {{ s.streak }} runs in a row without a miss</span></p>{% endif %}
 </section>
+{% set f = pr.fitness %}
+<section class="card rise"><h2>Fitness</h2>
+{% if f and f.estimate %}
+  <div class="row" style="align-items:flex-end;gap:16px">
+    <div><div class="num" style="font-size:44px;line-height:1">{{ f.estimate.vdot }}</div>
+      <div class="xs mut b" style="letter-spacing:.08em;text-transform:uppercase;margin-top:4px">Fitness score (VDOT){% if f.delta is not none %} · <span style="color:{{ 'var(--ok)' if f.delta >= 0 else 'var(--warn)' }}">{{ '%+.1f'|format(f.delta) }} vs a month ago</span>{% endif %}</div></div>
+    {% if f.spark %}<svg class="spark" viewBox="0 0 {{ f.spark.width }} {{ f.spark.height }}" role="img" aria-label="Fitness trend over 12 weeks"><path d="{{ f.spark.d }}" fill="none" stroke="url(#sp)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs><linearGradient id="sp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--hl2)"/><stop offset="1" style="stop-color:var(--hl)"/></linearGradient></defs>
+      <circle cx="{{ f.spark.last[0] }}" cy="{{ f.spark.last[1] }}" r="4.5" fill="var(--hl)"/></svg>{% endif %}
+  </div>
+  <div class="preds">{% for name, t in f.predictions.items() %}<div><b class="num">{{ t }}</b><span>{{ name }}</span></div>{% endfor %}</div>
+  {% if f.goal %}<p class="sm" style="margin-top:14px"><b>Goal {{ f.goal.name }} in {{ f.goal.goal }}:</b> today's fitness points to {{ f.goal.predicted }}. {{ f.goal.verdict }}</p>{% endif %}
+  <p class="xs mut" style="margin-top:10px">Estimated from your best recent effort (<a href="/run/{{ f.estimate.activity_id }}">{{ f.estimate.km }} km on {{ f.estimate.date|fmt_date('%b %-d') }}</a>), not a race. Easy runs understate your fitness, so this rises as you run harder sessions or race.</p>
+{% else %}
+  <p class="sm mut">Once you've logged a run of 3 km or more (12+ minutes), your fitness score and predicted race times will appear here.</p>
+{% endif %}
+</section>
+
+{% set hm = pr.heatmap %}
+<section class="card rise"><h2>Consistency</h2>
+  <div class="heatwrap"><div class="months" style="grid-template-columns:repeat({{ hm.weeks }},1fr)">{% for m in hm.months %}<span style="grid-column:{{ m.col }}">{{ m.label }}</span>{% endfor %}</div>
+  <div class="heat" style="grid-template-columns:repeat({{ hm.weeks }},1fr)" role="img" aria-label="{{ hm.runs }} runs on {{ hm.active_days }} days in the last {{ hm.weeks }} weeks">
+    {% for c in hm.cells %}{% if c.run_id %}<a class="hc l{{ c.level }}" href="/run/{{ c.run_id }}" style="grid-column:{{ c.col }};grid-row:{{ c.row }}" title="{{ c.date|fmt_date('%b %-d') }}: {{ c.km|dist(units) }}" aria-label="{{ c.date|fmt_date('%b %-d') }}: {{ c.km|dist(units) }}"></a>
+    {% else %}<span class="hc l0 {{ 'fut' if c.future }}" style="grid-column:{{ c.col }};grid-row:{{ c.row }}"></span>{% endif %}{% endfor %}
+  </div></div>
+  <p class="xs mut" style="margin-top:10px">{{ hm.runs }} run{{ 's' if hm.runs != 1 }} on {{ hm.active_days }} days in the last {{ hm.weeks }} weeks. Tap a square to open that run.</p>
+</section>
+
+{% set bd = pr.badges %}
+<section class="card rise"><h2>Milestones <span style="text-transform:none;letter-spacing:0;font-weight:500">· {{ bd.count }} of {{ bd.total }}</span></h2>
+  <div class="badges">
+    {% for b in bd.earned %}<div class="badge" title="{{ b.hint }}"><span class="e">{{ b.emoji }}</span><b>{{ b.name }}</b><small>{{ b.earned|fmt_date('%b %-d, %Y') }}</small></div>{% endfor %}
+    {% for b in bd.locked %}<div class="badge locked" title="{{ b.hint }}"><span class="e">{{ b.emoji }}</span><b>{{ b.name }}</b><small>{{ b.hint }}</small></div>{% endfor %}
+  </div>
+</section>
+
 {% if runs %}<section class="card flush rise"><div style="padding:18px 18px 4px"><h2>Recent runs</h2></div>
   {% for a in runs %}<a class="wk" href="/run/{{ a.id }}" style="color:inherit;text-decoration:none">
     <div class="date"><span>{{ a.date|fmt_date('%a') }}</span><b>{{ a.date|fmt_date('%-d') }}</b></div>
