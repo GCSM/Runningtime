@@ -124,9 +124,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         q = urlencode({k: v for k, v in (("msg", msg), ("err", err)) if v})
         return RedirectResponse(f"{path}?{q}" if q else path, status_code=303)
 
-    def set_session(resp, uid: int):
+    def set_session(resp, uid: int, request: Request):
+        secure = settings.secure_cookies or request.url.scheme == "https"
         resp.set_cookie(auth.COOKIE, auth.new_session(db, uid), max_age=auth.SESSION_DAYS * 86400,
-                        httponly=True, samesite="lax", secure=settings.secure_cookies, path="/")
+                        httponly=True, samesite="lax", secure=secure, path="/")
         return resp
 
     @app.middleware("http")
@@ -176,14 +177,14 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         if not u or not auth.verify_password(password, u["pw_hash"]):
             failures[key].append(time.time())
             return back("/login", err="Wrong email or password.")
-        return set_session(RedirectResponse("/", 303), u["id"])
+        return set_session(RedirectResponse("/", 303), u["id"], request)
 
     @app.get("/signup")
     def signup_page(request: Request):
         return render(request, "login.html", mode="signup", settings=settings)
 
     @app.post("/signup")
-    def signup(name: str = Form(""), email: str = Form(""), password: str = Form(""), invite: str = Form("")):
+    def signup(request: Request, name: str = Form(""), email: str = Form(""), password: str = Form(""), invite: str = Form("")):
         if not settings.allow_signups:
             return back("/signup", err="Signups are closed.")
         if settings.invite_code and not secrets.compare_digest(invite.strip(), settings.invite_code):
@@ -195,7 +196,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         if db.user_by_email(email):
             return back("/signup", err="An account with that email already exists.")
         uid = db.create_user(email, name or email.split("@")[0], auth.hash_password(password))
-        return set_session(RedirectResponse("/setup", 303), uid)
+        return set_session(RedirectResponse("/setup", 303), uid, request)
 
     @app.post("/logout")
     def logout(request: Request):
@@ -240,16 +241,16 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         svc = request.state.svc
         p = svc.db.get_profile()
         import ipaddress
-        from urllib.parse import urlparse
 
-        host = urlparse(settings.public_url).hostname or ""
+        base = str(request.base_url).rstrip("/")   # the address the user is browsing with, not a possibly-stale setting
+        host = request.url.hostname or ""
         try:
             ipaddress.ip_address(host)
             is_ip = host not in ("127.0.0.1", "::1")
         except ValueError:
             is_ip = False
         return render(request, "me.html", d=svc.dashboard(), p=p, units=p.units if p else "km", settings=settings,
-                      callback_host=host, callback_is_ip=is_ip, callback_url=f"{settings.public_url}/strava/callback")
+                      callback_host=host, callback_is_ip=is_ip, callback_url=f"{base}/strava/callback")
 
     @app.get("/setup")
     def setup(request: Request):
@@ -308,7 +309,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back("/me", err="Add your Strava app's Client ID and Secret first.")
         state = secrets.token_urlsafe(16)
         svc.db.kv_set("strava_state", state)
-        return RedirectResponse(svc.strava.authorize_url(state))
+        return RedirectResponse(svc.strava.authorize_url(state, str(request.base_url)))
 
     @app.get("/strava/callback")
     def strava_callback(request: Request, code: str = "", error: str = "", scope: str = "", state: str = ""):

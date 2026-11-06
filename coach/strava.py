@@ -73,10 +73,11 @@ class StravaClient:
     def athlete_name(self) -> str:
         return (self.db.kv_get("strava_token") or {}).get("athlete_name", "")
 
-    def authorize_url(self, state: str) -> str:
+    def authorize_url(self, state: str, base_url: str | None = None) -> str:
+        """base_url: the address the user is browsing with (so the callback can never point at a stale domain)."""
         q = {
             "client_id": self._creds()[0], "response_type": "code", "approval_prompt": "auto",
-            "redirect_uri": f"{self.s.public_url}/strava/callback", "scope": "read,activity:read_all", "state": state,
+            "redirect_uri": f"{(base_url or self.s.public_url).rstrip('/')}/strava/callback", "scope": "read,activity:read_all", "state": state,
         }
         return f"{AUTH_URL}?{urlencode(q)}"
 

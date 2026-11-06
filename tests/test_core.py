@@ -386,8 +386,8 @@ def real_strava_client(tmp_path, **settings_kw):
     return TestClient(create_app(s, db=db, coach=FakeCoach(), clock=lambda: TODAY)), db
 
 
-def authorize_params(c):
-    r = c.get("/strava/connect", follow_redirects=False)
+def authorize_params(c, host="coach.lan:8000"):
+    r = c.get("/strava/connect", headers={"host": host}, follow_redirects=False)
     assert r.status_code in (302, 307) and "strava.com/oauth/authorize" in r.headers["location"], r.headers.get("location")
     return {k: v[0] for k, v in parse_qs(urlparse(r.headers["location"]).query).items()}
 
@@ -475,11 +475,37 @@ def test_deleting_account_removes_strava_credentials(tmp_path):
 
 
 def test_me_page_warns_when_callback_host_is_an_ip(tmp_path):
-    for url, expect in (("http://192.168.1.50:8000", True), ("http://coach.lan:8000", False), ("http://localhost:8000", False)):
-        s = Settings(db_path=str(tmp_path / f"{abs(hash(url))}.db"), sync_interval_min=0, public_url=url)
-        c = TestClient(create_app(s, db=DB(s.db_path), coach=FakeCoach(), clock=lambda: TODAY))
-        signup(c)
-        page = c.get("/me").text
-        assert ("redirect_uri invalid" in page) is expect, url
-        assert "just the host" in page                                 # the exact-host instruction is always shown
-        assert ("nip.io" in page) is expect
+    s = Settings(db_path=str(tmp_path / "ip.db"), sync_interval_min=0, public_url="http://irrelevant.example")
+    c = TestClient(create_app(s, db=DB(s.db_path), coach=FakeCoach(), clock=lambda: TODAY))
+    signup(c)
+    for host, expect in (("192.168.1.50", True), ("coach.lan", False), ("localhost:8000", False)):
+        page = c.get("/me", headers={"host": host}).text
+        assert ("redirect_uri invalid" in page) is expect, host
+        assert ("nip.io" in page) is expect and "just the host" in page
+        assert f"http://{host}/strava/callback" in page                    # shows what will really be sent
+
+
+def test_strava_callback_follows_the_address_in_use_not_a_stale_public_url(tmp_path):
+    c, db = real_strava_client(tmp_path)                                    # PUBLIC_URL is http://coach.lan:8000 here
+    signup(c)
+    c.post("/strava/app", data={"client_id": "111", "client_secret": SECRET_A})
+    # The user now browses the NEW address; PUBLIC_URL in the config is stale. The callback must use the new one.
+    assert authorize_params(c, host="coach.newdomain.lan")["redirect_uri"] == "http://coach.newdomain.lan/strava/callback"
+    assert authorize_params(c, host="coach.lan:8000")["redirect_uri"] == "http://coach.lan:8000/strava/callback"
+
+
+def test_login_redirects_stay_on_the_host_being_used_and_cookie_is_secure_over_https(tmp_path):
+    s = Settings(db_path=str(tmp_path / "r.db"), sync_interval_min=0, public_url="http://old.example")   # stale/old setting
+    db = DB(s.db_path)
+    app = create_app(s, db=db, coach=FakeCoach(), strava_factory=lambda u: FakeStrava(), clock=lambda: TODAY)
+    c = TestClient(app, base_url="http://coach.lan")
+    r = signup(c)
+    assert r.headers["location"] == "/setup"                               # relative: the browser stays on coach.lan
+    assert "secure" not in r.headers["set-cookie"].lower()                 # plain-HTTP LAN use: cookie must work over http
+    c.post("/logout")
+    r = c.post("/login", data={"email": "a@example.com", "password": "correct-horse"}, follow_redirects=False)
+    assert r.headers["location"] == "/" and "old.example" not in str(r.headers)
+    # Served over HTTPS (e.g. via a proxy): cookie is Secure even though PUBLIC_URL says http.
+    sec = TestClient(app, base_url="https://coach.example.com")
+    r = sec.post("/login", data={"email": "a@example.com", "password": "correct-horse"}, follow_redirects=False)
+    assert "secure" in r.headers["set-cookie"].lower()

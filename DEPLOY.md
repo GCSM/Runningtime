@@ -40,7 +40,7 @@ To change settings later, use `deploy/reconfigure.sh` (see below).
 | Variable | What it does |
 |---|---|
 | `ANTHROPIC_API_KEY` | your key (billed for every user's plans/reviews) |
-| `PUBLIC_URL` | address users type, e.g. `http://coach.lan` for plain LAN use, `https://…` once you add HTTPS |
+| `PUBLIC_URL` | your address, e.g. `http://coach.lan` or `https://…`. Strava callbacks and redirects use the address you actually browse with, so a stale value here can't break them; it's the fallback and marks cookies Secure when it starts with `https://` |
 | `COACH_PORT` | port the app listens on (default `80`, so URLs need no `:port`); change with `reconfigure.sh COACH_PORT=8080` |
 | `TZ` | decides what counts as "today" and when the weekly review runs |
 | `INVITE_CODE` / `ALLOW_SIGNUPS` | restrict who can sign up |
@@ -65,6 +65,18 @@ bash deploy/reconfigure.sh --unset INVITE_CODE      # remove a setting
 Values are validated first (effort, URL scheme, timezone, true/false, numbers), and a bad value changes nothing. In the
 walkthrough, type `-` to clear a value, and `new` at the invite-code prompt to generate a code. The 5 most recent
 backups are kept as `/etc/running-coach.env.bak.<timestamp>`.
+
+## Troubleshooting: still on the old port or old address after updating
+The port comes from the systemd unit and the address from the config file; `git pull` changes neither. Check what is
+really installed:
+```bash
+cd /opt/running-coach && git log -1 --oneline                  # should mention port 80 / COACH_PORT
+systemctl cat running-coach | grep -E "ExecStart|COACH_PORT|Ambient"   # must show --port ${COACH_PORT}
+grep -E "COACH_PORT|PUBLIC_URL" /etc/running-coach.env          # COACH_PORT=80, PUBLIC_URL=your new address
+ss -ltnp | grep -E ":(80|8000) "                                # what is actually listening
+```
+If the unit still says `--port 8000`, run `bash deploy/install.sh` (it rewrites the unit, reloads systemd and restarts).
+`reconfigure.sh` now refuses to run against an outdated unit and tells you this.
 
 ## Troubleshooting: service won't start on port 80
 Port 80 is below 1024, so the unit grants the `coach` user just that one capability (`CAP_NET_BIND_SERVICE`). If
@@ -102,7 +114,7 @@ The Me tab shows the exact value to use (it's the host of `PUBLIC_URL`) and the 
   (not confirmed either way). Give the server a hostname instead — a local DNS name such as `coach.lan`, or a
   `nip.io` name like `coach.192.168.1.50.nip.io`, which resolves to that IP — then run `bash deploy/reconfigure.sh`,
   set `PUBLIC_URL` to `http://<that hostname>`, and use that hostname as the Strava callback domain.
-- Changed `PUBLIC_URL`? The app restarts, but the Strava app's callback domain must be updated to the new host too.
+- The callback URL is built from the address you're browsing with (shown on the Me tab), not from `PUBLIC_URL`. If you move to a new hostname, update the Strava app's callback domain to that host.
 
 ## 3. HTTPS access (optional; pick one)
 - **Reverse proxy** (Caddy / Nginx Proxy Manager / Traefik) in another container: see `deploy/Caddyfile.example`.
