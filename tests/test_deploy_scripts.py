@@ -100,8 +100,8 @@ def test_unset_removes_a_value(box):
 
 
 def test_interactive_walkthrough_keeps_blank_answers(box):
-    # Order of prompts: key, model, effort, port, url, tz, signups, invite, strava id, strava secret, interval, auto-adjust
-    answers = ["", "", "high", "", "", "", "false", "new", "", "", "", ""]
+    # Order of prompts: key, model, effort, port, url, tz, signups, invite, strava id, strava secret, athlete limit, interval, auto-adjust
+    answers = ["", "", "high", "", "", "", "false", "new", "", "", "", "", ""]
     r = run(box, stdin="\n".join(answers) + "\n")
     assert r.returncode == 0, r.stderr
     assert val(box, "COACH_EFFORT") == "high" and val(box, "ALLOW_SIGNUPS") == "false"
@@ -256,3 +256,12 @@ def test_reconfigure_refuses_when_installed_service_file_is_outdated(box):
     assert box["env"].read_text() == BASE_ENV                      # nothing changed, nothing restarted
     assert "restart" not in box["log"].read_text()
     assert run(box, "--show").returncode == 0                      # read-only commands still work
+
+
+def test_strava_athlete_limit_is_validated_and_saved(box):
+    for bad in ("STRAVA_ATHLETE_LIMIT=0", "STRAVA_ATHLETE_LIMIT=ten", "STRAVA_ATHLETE_LIMIT=-3"):
+        assert run(box, bad).returncode != 0, bad
+    assert val(box, "STRAVA_ATHLETE_LIMIT") is None
+    r = run(box, "STRAVA_ATHLETE_LIMIT=10", "STRAVA_CLIENT_ID=12345")
+    assert r.returncode == 0 and val(box, "STRAVA_ATHLETE_LIMIT") == "10" and val(box, "STRAVA_CLIENT_ID") == "12345"
+    assert "STRAVA_ATHLETE_LIMIT" in run(box, "--show").stdout

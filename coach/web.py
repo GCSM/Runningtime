@@ -121,6 +121,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             for uid in db.strava_user_ids():
                 try:
                     service_for(uid).background_tick()
+                except StravaError as e:
+                    log.warning("strava sync skipped for user %s: %s", uid, e)
                 except Exception:
                     log.exception("background tick failed for user %s", uid)
 
@@ -257,6 +259,10 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def delete_account(request: Request, confirm: str = Form("")):
         if confirm.strip().lower() != request.state.user["email"].lower():
             return back("/me", err="Type your email address to confirm deletion.")
+        try:
+            request.state.svc.strava.disconnect()      # revoke on Strava's side too (best effort), freeing the athlete slot
+        except Exception:  # noqa: BLE001
+            log.exception("strava disconnect during account deletion failed")
         db.delete_user(request.state.user["id"])
         resp = RedirectResponse("/login", 303)
         resp.delete_cookie(auth.COOKIE, path="/")
@@ -296,8 +302,12 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             is_ip = host not in ("127.0.0.1", "::1")
         except ValueError:
             is_ip = False
-        return render(request, "me.html", d=svc.dashboard(), p=p, units=p.units if p else "km", settings=settings,
-                      callback_host=host, callback_is_ip=is_ip, callback_url=f"{base}/strava/callback")
+        d = svc.dashboard()
+        used = len(db.strava_user_ids())
+        full = d["strava_ready"] and not d["strava_connected"] and used >= settings.strava_athlete_limit
+        return render(request, "me.html", d=d, p=p, units=p.units if p else "km", settings=settings,
+                      callback_host=host, callback_is_ip=is_ip, callback_url=f"{base}/strava/callback",
+                      strava_used=used, strava_full=full)
 
     @app.get("/setup")
     def setup(request: Request):
@@ -371,7 +381,12 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     def strava_connect(request: Request):
         svc = request.state.svc
         if not getattr(svc.strava, "configured", False):
-            return back("/me", err="Add your Strava app's Client ID and Secret first.")
+            return back("/me", err="Strava isn't set up on this server yet. Ask whoever runs it to add the Strava app.")
+        if not svc.strava.connected:
+            used = len(db.strava_user_ids())
+            if used >= settings.strava_athlete_limit:
+                return back("/me", err=f"This server's Strava app is full ({used} of {settings.strava_athlete_limit} athletes connected). "
+                                       "Ask the person who runs it to free a slot or raise the limit.")
         state = secrets.token_urlsafe(16)
         svc.db.kv_set("strava_state", state)
         return RedirectResponse(svc.strava.authorize_url(state, str(request.base_url)))
@@ -393,21 +408,6 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         except Exception as e:
             return back("/me", err=f"Strava connection failed: {e}")
         return back("/me", f"Strava connected; imported {n} recent runs.")
-
-    @app.post("/strava/app")
-    def strava_app_save(request: Request, client_id: str = Form(""), client_secret: str = Form("")):
-        cid, sec = client_id.strip(), client_secret.strip()
-        if not cid.isdigit():
-            return back("/me", err="The Client ID should be a number (shown on your Strava API settings page).")
-        if len(sec) < 16 or not sec.isalnum():
-            return back("/me", err="That Client Secret doesn't look right: it's a long string of letters and digits, with no spaces.")
-        request.state.svc.strava.save_app(cid, sec)
-        return back("/me", "Saved your Strava app. Now tap Connect with Strava.")
-
-    @app.post("/strava/app/remove")
-    def strava_app_remove(request: Request):
-        request.state.svc.strava.remove_app()
-        return back("/me", "Removed your Strava app and disconnected Strava.")
 
     @app.post("/strava/disconnect")
     def strava_disconnect(request: Request):

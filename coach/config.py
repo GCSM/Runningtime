@@ -13,6 +13,7 @@ class Settings:
     effort: str = "medium"
     strava_client_id: str = ""
     strava_client_secret: str = ""
+    strava_athlete_limit: int = 10   # your Strava app's athlete capacity; connecting beyond it is refused politely
     public_url: str = "http://localhost:8000"
     allow_signups: bool = True
     invite_code: str = ""
@@ -29,6 +30,7 @@ class Settings:
             effort=e("COACH_EFFORT", "medium"),
             strava_client_id=e("STRAVA_CLIENT_ID", ""),
             strava_client_secret=e("STRAVA_CLIENT_SECRET", ""),
+            strava_athlete_limit=int(e("STRAVA_ATHLETE_LIMIT", "10") or 10),
             public_url=e("PUBLIC_URL", "http://localhost:8000").rstrip("/"),
             allow_signups=e("ALLOW_SIGNUPS", "true").lower() in ("1", "true", "yes"),
             invite_code=e("INVITE_CODE", ""),

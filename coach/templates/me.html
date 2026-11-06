@@ -15,40 +15,29 @@
 <section class="card"><h2>Strava</h2>
 {% if d.strava_connected %}
   <p class="b">Connected{% if d.strava_name %} as {{ d.strava_name }}{% endif %}</p>
-  <p class="sm mut" style="margin:2px 0 14px">Last sync: {{ d.last_sync|fmt_ts }}. Runs sync automatically.</p>
+  <p class="sm mut" style="margin:2px 0 14px">Last sync: {{ d.last_sync|fmt_ts }}. New runs sync automatically.</p>
   <div class="row"><form method="post" action="/sync" data-job class="grow"><button class="sec">Sync now</button></form>
-  <form method="post" action="/strava/disconnect" class="grow"><button class="danger">Disconnect</button></form></div>
-{% elif d.strava_ready %}
-  <p class="sm mut" style="margin-bottom:14px">{% if d.strava_app_source == 'user' %}Your Strava app (Client ID {{ d.strava_client_id }}) is saved.{% else %}This server has a shared Strava app.{% endif %} Connect to let your coach compare what you planned with what you ran.</p>
+  <form method="post" action="/strava/disconnect" class="grow" onsubmit="return confirm('Disconnect Strava? Your plan stays, but it will stop adapting to new runs.')"><button class="danger">Disconnect</button></form></div>
+{% elif d.strava_ready and not strava_full %}
+  <p style="margin-bottom:4px" class="b">Let your plan adapt to the runs you actually do.</p>
+  <p class="sm mut" style="margin-bottom:14px">Connect Strava and your coach compares what you planned with what you ran, then adjusts the weeks ahead. It only reads your runs: it never posts or changes anything on Strava, and you can disconnect any time here or in Strava’s settings.</p>
   <a class="btn strava" href="/strava/connect">Connect with Strava</a>
+{% elif d.strava_ready %}
+  <p class="b">This server’s Strava app is full</p>
+  <p class="sm mut" style="margin-top:4px">{{ strava_used }} of {{ settings.strava_athlete_limit }} athletes are connected, so no more can connect right now. Ask the person who runs this server to free a slot or raise the limit. Your plan works fine without Strava; you can log how it went in a check-in instead.</p>
 {% else %}
-  <p class="sm mut" style="margin-bottom:12px">Strava lets each person connect through their own free app, so your data stays yours. It takes about two minutes:</p>
-  <ol class="sm" style="margin:0 0 16px 18px;padding:0;line-height:1.55">
-    <li>Open <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> and create an app (any name and website).</li>
-    <li>Set <b>Authorization Callback Domain</b> to exactly <code>{{ callback_host }}</code> (just the host: no <code>http://</code>, no port, no slash).</li>
-    <li>Copy the <b>Client ID</b> and <b>Client Secret</b> below.</li>
-  </ol>
-{% endif %}
-{% if not d.strava_connected and d.strava_app_source != 'user' %}
-  <form method="post" action="/strava/app" class="stack">
-    <label class="f" style="margin:0"><span class="lab">Client ID</span><input type="text" name="client_id" inputmode="numeric" autocomplete="off" required></label>
-    <label class="f" style="margin:0"><span class="lab">Client Secret</span><input type="password" name="client_secret" autocomplete="off" autocapitalize="none" required></label>
-    <button class="sec">Save my Strava app</button>
-  </form>
-  <p class="xs mut" style="margin-top:10px">Callback URL sent to Strava: <code>{{ callback_url }}</code></p>
-  {% if callback_is_ip %}<p class="sm" style="margin-top:10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">
-    <b>Heads up:</b> this server is addressed by an IP ({{ callback_host }}). Strava may reject an IP as the callback domain
-    (“redirect_uri invalid”). If it does, give the server a hostname — a local DNS name like <code>coach.lan</code>, or
-    <code>coach.{{ callback_host }}.nip.io</code> which resolves to this IP — and set <code>PUBLIC_URL</code> to use it
-    (<code>bash deploy/reconfigure.sh</code>), then use that same host as the callback domain.</p>{% endif %}
-{% endif %}
-{% if d.strava_app_source == 'user' %}
-  <details style="margin-top:16px"><summary class="sm b" style="color:var(--mut)">Change or remove my Strava app</summary>
-    <form method="post" action="/strava/app" class="stack" style="margin-top:12px">
-      <label class="f" style="margin:0"><span class="lab">Client ID</span><input type="text" name="client_id" inputmode="numeric" autocomplete="off" value="{{ d.strava_client_id }}" required></label>
-      <label class="f" style="margin:0"><span class="lab">New Client Secret</span><input type="password" name="client_secret" autocomplete="off" autocapitalize="none" required></label>
-      <button class="sec">Update</button></form>
-    <form method="post" action="/strava/app/remove" style="margin-top:10px" onsubmit="return confirm('Remove your Strava app and disconnect Strava?')"><button class="danger">Remove app &amp; disconnect</button></form>
+  <p class="b">Strava isn’t set up on this server yet</p>
+  <p class="sm mut" style="margin-top:4px">Ask whoever runs it to add the Strava app. Your plan works without Strava; you just won’t get automatic adjustments.</p>
+  <details style="margin-top:14px"><summary class="sm b" style="color:var(--mut)">For the person running the server</summary>
+    <ol class="sm" style="margin:10px 0 0 18px;padding:0;line-height:1.55">
+      <li>Create one app at <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>.</li>
+      <li>Set its <b>Authorization Callback Domain</b> to exactly <code>{{ callback_host }}</code> (just the host: no <code>http://</code>, no port, no slash).</li>
+      <li>Put its Client ID and Secret in the server config (<code>bash deploy/reconfigure.sh</code>), and set <code>STRAVA_ATHLETE_LIMIT</code> to the athlete capacity Strava gave the app (new apps start at 1).</li>
+    </ol>
+    <p class="xs mut" style="margin-top:8px">Callback URL sent to Strava: <code>{{ callback_url }}</code></p>
+    {% if callback_is_ip %}<p class="sm" style="margin-top:10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">
+      <b>Heads up:</b> this server is addressed by an IP ({{ callback_host }}). Strava may reject an IP as the callback domain
+      (“redirect_uri invalid”). If it does, give the server a hostname (a local DNS name like <code>coach.lan</code>) and browse to it.</p>{% endif %}
   </details>
 {% endif %}
 </section>

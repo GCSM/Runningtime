@@ -79,7 +79,7 @@
   <details class="more-t"><summary><div class="bubble"><div class="prose clamp">{{ m }}</div>{% if m|length > 260 %}<div class="sm b" style="color:var(--hl);margin-top:6px">Read more</div>{% endif %}</div></summary></details></div></div>
 </section>{% endif %}
 
-{% if not d.strava_connected %}
-<a class="card row rise" href="/me" style="color:inherit"><div class="grow"><div class="b">Connect Strava</div><div class="sm mut">Link your own Strava app so your plan adapts to the runs you actually do.</div></div>{{ icon('chev') }}</a>
+{% if not d.strava_connected and d.strava_ready %}
+<a class="card row rise" href="/me" style="color:inherit"><div class="grow"><div class="b">Connect Strava</div><div class="sm mut">Link your account so your plan adapts to the runs you actually do.</div></div>{{ icon('chev') }}</a>
 {% endif %}
 {% endblock %}

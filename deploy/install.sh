@@ -9,7 +9,7 @@
 #
 # Non-interactive / overrides (all optional), e.g.:
 #   ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://coach.lan TZ=America/Chicago \
-#     STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
+#     STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... STRAVA_ATHLETE_LIMIT=10 bash deploy/install.sh
 #   Require an invite code to sign up:  REQUIRE_INVITE=1 (generates one)  or  INVITE_CODE=yourword
 #
 # --configure-only   write the config file and stop (no apt / systemd); used for testing.
@@ -50,6 +50,7 @@ configure() {
   set_var INVITE_CODE "$invite"
   [ -n "${STRAVA_CLIENT_ID:-}" ] && set_var STRAVA_CLIENT_ID "$STRAVA_CLIENT_ID"
   [ -n "${STRAVA_CLIENT_SECRET:-}" ] && set_var STRAVA_CLIENT_SECRET "$STRAVA_CLIENT_SECRET"
+  [ -n "${STRAVA_ATHLETE_LIMIT:-}" ] && set_var STRAVA_ATHLETE_LIMIT "$STRAVA_ATHLETE_LIMIT"
 
   if id coach >/dev/null 2>&1; then chown root:coach "$ENV_FILE"; fi
   chmod 640 "$ENV_FILE"   # holds your API keys: not world-readable

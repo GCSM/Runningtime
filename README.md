@@ -63,19 +63,24 @@ Every plan, run, and Strava connection is private to its user. On a server other
 Users can delete their account and all their data from **Me**. Serve over HTTPS (reverse proxy or Tailscale) and set
 `PUBLIC_URL` to the `https://` address so cookies are marked `Secure`.
 
-### Strava (each user connects their own app)
-Strava limits every API app to a small number of athletes, so instead of one shared app, **each user enters their own**.
-It takes about two minutes and needs nothing in the server config:
-1. On the **Me** tab, the Strava card walks the user through creating a free app at <https://www.strava.com/settings/api>.
-2. In that app, set **Authorization Callback Domain** to the host of the server's `PUBLIC_URL` (the card shows the exact value).
-3. Paste the app's **Client ID** and **Client Secret** into the card, save, then tap **Connect with Strava**.
+### Strava (one app for the server; each user just connects)
+You create **one** Strava app, and every user taps **Connect with Strava** on the Me tab. Nobody else needs a developer account.
+1. Create the app at <https://www.strava.com/settings/api>.
+2. Set **Authorization Callback Domain** to the host you browse to, exactly (e.g. `coach.lan`: no `http://`, no port, no slash).
+   The Me tab shows the exact value and the callback URL being sent.
+3. Put the Client ID and Secret in the server config (`bash deploy/reconfigure.sh`) and set `STRAVA_ATHLETE_LIMIT` to the athlete
+   capacity Strava gave the app. New apps start at 1; one third-party guide says you can raise it to 10 yourself in the app's
+   settings (unconfirmed), and more needs Strava's review.
 
-Credentials and tokens are stored per account (in the SQLite file; treat it as secret). Changing to a different app
-disconnects the old one, and deleting an account removes everything. A user's own app limits Strava access to that
-user, which is exactly what you want.
-
-Optional: to offer one shared app instead, set `STRAVA_CLIENT_ID`/`STRAVA_CLIENT_SECRET` in the server config. A user's own
-app always takes priority over the shared one.
+How it behaves:
+- Each user's tokens are stored separately; users can disconnect any time, which also revokes the app's access on Strava.
+- **The limit is enforced here too**: once `STRAVA_ATHLETE_LIMIT` users are connected, the next person is told the app is full
+  *before* being sent to Strava. Disconnecting or deleting an account frees the slot locally. Whether Strava also frees its own
+  slot on revoke is unconfirmed, so if you hit Strava's limit despite free local slots, remove stale athletes in Strava's settings.
+- If someone revokes access on Strava's side, the next sync notices, clears the connection and asks them to reconnect.
+- Rate limits are handled: a throttled sync reports it and retries on the next cycle.
+- Webhooks (instant "new run" pushes) aren't used because Strava's servers can't reach a home-network address; runs sync every
+  `SYNC_INTERVAL_MIN` minutes instead.
 
 No Strava? The planner still works from your self-reported weekly mileage; you just won't get automatic adaptation.
 

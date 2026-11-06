@@ -29,7 +29,7 @@ without touching your config.
 Skip the prompts by passing values as environment variables (all optional):
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://coach.lan TZ=America/Chicago \
-STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
+STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... STRAVA_ATHLETE_LIMIT=10 bash deploy/install.sh
 ```
 If the app is ever reachable beyond your LAN, require a code to sign up: `REQUIRE_INVITE=1` generates one, or
 `INVITE_CODE=yourword` picks your own (or edit `INVITE_CODE` in the env file later). Remember every account's plans and
@@ -44,7 +44,8 @@ To change settings later, use `deploy/reconfigure.sh` (see below).
 | `COACH_PORT` | port the app listens on (default `80`, so URLs need no `:port`); change with `reconfigure.sh COACH_PORT=8080` |
 | `TZ` | decides what counts as "today" and when the weekly review runs |
 | `INVITE_CODE` / `ALLOW_SIGNUPS` | restrict who can sign up |
-| `STRAVA_CLIENT_ID/SECRET` | optional shared Strava app; normally leave blank because each user adds their own on the Me tab (callback domain in Strava = host of `PUBLIC_URL`) |
+| `STRAVA_CLIENT_ID/SECRET` | your one Strava app; every user connects through it (callback domain in Strava = the host you browse to) |
+| `STRAVA_ATHLETE_LIMIT` | the athlete capacity of that Strava app (default 10). The app refuses further connections politely beyond it |
 
 > **Plain HTTP vs HTTPS:** keep `PUBLIC_URL` matching how you actually reach the app. With an `https://` `PUBLIC_URL` the
 > login cookie is marked Secure and browsers silently drop it over HTTP, so sign-in appears to do nothing. The installer

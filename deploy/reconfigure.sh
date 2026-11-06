@@ -59,7 +59,7 @@ if [ "$RESTART" = 1 ] && [ "$SHOW" = 0 ] && [ "$CHECK" = 0 ]; then
 fi
 
 KEYS=(ANTHROPIC_API_KEY COACH_MODEL COACH_EFFORT COACH_PORT PUBLIC_URL TZ ALLOW_SIGNUPS INVITE_CODE
-      STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET SYNC_INTERVAL_MIN AUTO_ADJUST FORWARDED_ALLOW_IPS)
+      STRAVA_CLIENT_ID STRAVA_CLIENT_SECRET STRAVA_ATHLETE_LIMIT SYNC_INTERVAL_MIN AUTO_ADJUST FORWARDED_ALLOW_IPS)
 SECRETS=" ANTHROPIC_API_KEY STRAVA_CLIENT_SECRET INVITE_CODE "
 
 mask_value() {  # mask_value KEY VALUE
@@ -88,6 +88,7 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
     TZ) [ -f "/usr/share/zoneinfo/$v" ] || { echo "Unknown timezone '$v' (e.g. America/New_York)"; return 1; } ;;
     COACH_PORT) { [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ]; } || { echo "COACH_PORT must be a port number from 1 to 65535"; return 1; } ;;
     ALLOW_SIGNUPS|AUTO_ADJUST) case "$v" in true|false) ;; *) echo "$k must be true or false"; return 1 ;; esac ;;
+    STRAVA_ATHLETE_LIMIT) { [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ]; } || { echo "STRAVA_ATHLETE_LIMIT must be a whole number of 1 or more"; return 1; } ;;
     SYNC_INTERVAL_MIN) [[ "$v" =~ ^[0-9]+$ ]] || { echo "SYNC_INTERVAL_MIN must be a whole number of minutes (0 disables)"; return 1; } ;;
   esac
   return 0
@@ -149,8 +150,9 @@ else
     new) set_var INVITE_CODE "$(random_code)"; echo "  New invite code: $(get_var INVITE_CODE)" ;;
     *) err="$(validate INVITE_CODE "$ans")" || { rm -f "$BACKUP"; die "$err"; }; set_var INVITE_CODE "$ans" ;;
   esac
-  ask STRAVA_CLIENT_ID "Shared Strava client ID (optional; users normally enter their own)"
-  ask STRAVA_CLIENT_SECRET "Shared Strava client secret (optional)" secret
+  ask STRAVA_CLIENT_ID "Strava app client ID (the one app every user connects through)"
+  ask STRAVA_CLIENT_SECRET "Strava app client secret" secret
+  ask STRAVA_ATHLETE_LIMIT "Strava athlete limit (your app's capacity; new Strava apps start at 1)"
   ask SYNC_INTERVAL_MIN "Strava sync interval in minutes (0 disables)"
   ask AUTO_ADJUST "Automatic weekly plan review: true | false"
 fi
