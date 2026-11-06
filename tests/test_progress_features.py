@@ -365,9 +365,9 @@ def test_today_after_the_race_shows_the_result_and_a_next_goal_prompt(tmp_path):
     clock["d"] = p.race_date + timedelta(days=2)
     page = c.get("/").text
     assert "Race complete" in page and "Set your next goal" in page and "days to 5K" not in page
-    assert "adjust plan" not in page and "Check in with your coach" not in page          # nothing left to adjust once the race is over
+    assert "Review &amp; adjust my plan" not in page and "Check in with your coach" not in page          # nothing left to adjust once the race is over
     clock["d"] = p.race_date - timedelta(days=20)
-    assert "Check in with your coach" in c.get("/").text                                 # …but it's there during the build
+    assert "Review &amp; adjust my plan" in c.get("/").text                                 # …but it's there during the build
     clock["d"] = p.race_date + timedelta(days=2)
     db.for_user(1).upsert_activities([act(900, p.race_date, km=5.0, pace=230)])
     db.for_user(1).update_workout(race["id"], status="completed", activity_id=900)
