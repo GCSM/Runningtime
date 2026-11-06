@@ -336,7 +336,8 @@ def test_check_tool_spots_common_paste_mistakes(tmp_path):
     assert any("quotes" in p for p in check_mod.problems_with_key('"sk-ant-abc"'))
     assert any("whitespace" in p for p in check_mod.problems_with_key(" sk-ant-abc"))
     assert any("middle" in p for p in check_mod.problems_with_key("sk-ant-ab cd"))
-    assert any("sk-ant-" in p for p in check_mod.problems_with_key("sk-proj-abc"))
+    prefix = check_mod.problems_with_key("sk-proj-abc")
+    assert prefix and prefix[0].startswith("Note:")                      # unusual prefix is a note, not a failure
     assert check_mod.problems_with_key("") == ["ANTHROPIC_API_KEY is empty or missing."]
     f = tmp_path / "x.env"
     f.write_text("# c\nANTHROPIC_API_KEY=sk-ant-1\nCOACH_MODEL=m\n")
@@ -362,5 +363,8 @@ def test_check_tool_reports_rejected_key_and_success(tmp_path, monkeypatch, caps
     monkeypatch.setattr(anthropic, "Anthropic", Good)
     assert check_mod.main(["check", str(f)]) == 0
     assert "accepted the key" in capsys.readouterr().out
+    f.write_text("ANTHROPIC_API_KEY=odd-prefix-but-valid\n")          # API accepts it -> success despite the note
+    assert check_mod.main(["check", str(f)]) == 0
+    assert "Note:" in capsys.readouterr().out
     f.write_text("ANTHROPIC_API_KEY=\n")
     assert check_mod.main(["check", str(f)]) == 1

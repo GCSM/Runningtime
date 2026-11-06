@@ -33,7 +33,7 @@ def problems_with_key(key: str) -> list[str]:
     if any(c.isspace() for c in key.strip()):
         out.append("The key contains a space or line break in the middle (bad paste?).")
     if not key.strip(" \"'").startswith("sk-ant-"):
-        out.append("The key doesn't start with “sk-ant-”. Make sure you copied an Anthropic API key from the Console.")
+        out.append("Note: Anthropic API keys normally start with “sk-ant-”; this one doesn't (fine if the API accepts it).")
     return out
 
 
@@ -53,7 +53,8 @@ def main(argv: list[str]) -> int:
     print(f"Key:   {shown}\nModel: {model}")
     bad = problems_with_key(key)
     for b in bad:
-        print(f"✗ {b}")
+        print(f"{'·' if b.startswith('Note:') else '✗'} {b}")
+    fatal = [b for b in bad if not b.startswith("Note:")]
     if not key.strip():
         return 1
 
@@ -71,8 +72,8 @@ def main(argv: list[str]) -> int:
         print(f"✗ API call failed: {explain(e) or e}")
         return 1
     print(f"✓ Anthropic accepted the key and model (stop_reason={r.stop_reason}).")
-    if bad:
-        print("  …but fix the warnings above: the service passes the value to Anthropic exactly as written.")
+    if fatal:
+        print("  …but fix the problems above: the service passes the value to Anthropic exactly as written.")
         return 1
     return 0
 

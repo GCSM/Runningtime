@@ -79,7 +79,7 @@ says what failed. Common causes:
 
 | Message | Fix |
 |---|---|
-| rejected the API key (401) | key is wrong, revoked, or from another provider — create a new one in the Anthropic Console |
+| rejected the API key (401) | key is wrong, revoked, or the wrong kind of credential (API keys start with `sk-ant-` and come from console.anthropic.com → API Keys; a Claude subscription login does not work) |
 | wrapped in quotes / whitespace | re-enter with `bash deploy/reconfigure.sh` (it also strips these for you) |
 | out of credit | add credit under Billing in the Anthropic Console (API credit is separate from a Claude subscription) |
 | couldn't find the model | fix `COACH_MODEL` (e.g. `claude-sonnet-5-5`) |

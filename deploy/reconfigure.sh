@@ -79,7 +79,7 @@ validate() {  # validate KEY VALUE : prints a message and returns 1 if invalid
   case "$k" in
     ANTHROPIC_API_KEY)
       case "$v" in *[[:space:]]*) echo "ANTHROPIC_API_KEY contains a space — paste just the key"; return 1 ;; esac
-      case "$v" in sk-ant-*) ;; *) echo "ANTHROPIC_API_KEY should start with sk-ant-"; return 1 ;; esac ;;
+      case "$v" in sk-ant-*) ;; *) echo "  note: Anthropic API keys normally start with sk-ant- (saving anyway; the test below will tell)" >&2 ;; esac ;;
     COACH_EFFORT) case "$v" in low|medium|high) ;; *) echo "COACH_EFFORT must be low, medium or high"; return 1 ;; esac ;;
     PUBLIC_URL) case "$v" in http://*|https://*) ;; *) echo "PUBLIC_URL must start with http:// or https://"; return 1 ;; esac ;;
     TZ) [ -f "/usr/share/zoneinfo/$v" ] || { echo "Unknown timezone '$v' (e.g. America/New_York)"; return 1; } ;;

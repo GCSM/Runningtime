@@ -156,10 +156,12 @@ def test_pasted_key_is_cleaned_and_bad_keys_rejected(box):
     r = run(box, 'ANTHROPIC_API_KEY=  "sk-ant-api03-newkey"  ')          # spaces + wrapping quotes
     assert r.returncode == 0, r.stderr
     assert val(box, "ANTHROPIC_API_KEY") == "sk-ant-api03-newkey"
-    for bad in ("ANTHROPIC_API_KEY=sk-ant-has space inside", "ANTHROPIC_API_KEY=not-an-anthropic-key"):
-        before = box["env"].read_text()
-        r = run(box, bad)
-        assert r.returncode != 0 and box["env"].read_text() == before, bad
+    before = box["env"].read_text()
+    r = run(box, "ANTHROPIC_API_KEY=sk-ant-has space inside")
+    assert r.returncode != 0 and box["env"].read_text() == before        # a space inside is always a paste error
+    r = run(box, "ANTHROPIC_API_KEY=some-other-format-key-123")          # unusual prefix: warn, but don't lock the user out
+    assert r.returncode == 0 and val(box, "ANTHROPIC_API_KEY") == "some-other-format-key-123"
+    assert "normally start with sk-ant-" in (r.stdout + r.stderr)
 
 
 def test_changing_key_or_model_triggers_the_check_but_other_changes_do_not(box):
