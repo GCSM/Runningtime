@@ -17,9 +17,9 @@
   --ok:#4cd68a;--warn:#f5b845;--bad:#ff6b70;--shadow:none;
   --ph-base:#2ee6c5;--ph-build:#ffb02e;--ph-peak:#ff5c8a;--ph-taper:#5ea0ff;--ph-race:#ffd84a}
 :root[data-theme="light"]{color-scheme:light}:root[data-theme="dark"]{color-scheme:dark}
-.seg{display:flex;gap:4px;padding:4px;border-radius:16px;background:var(--fill)}
-.seg button{flex:1;min-height:44px;background:transparent;color:var(--fg);box-shadow:none;font-weight:700}
-.seg button[aria-pressed="true"]{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);outline:2px solid var(--hl)}
+.themeseg{display:flex;gap:4px;padding:4px;border-radius:16px;background:var(--fill)}
+.themeseg button{flex:1;min-height:44px;background:transparent;color:var(--fg);box-shadow:none;font-weight:700}
+.themeseg button[aria-pressed="true"]{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.2);outline:2px solid var(--hl)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{margin:0;color:var(--fg);font:17px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
@@ -280,3 +280,8 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
 .brand p{font-size:16px}
 @media(min-width:700px){.app{padding-top:32px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}}
+
+/* first-run setup wizard (progressive enhancement; without JS the whole form shows) */
+.wiz-bar{display:flex;gap:6px;margin:0 0 18px}.wiz-bar i{flex:1;height:5px;border-radius:3px;background:var(--fill)}.wiz-bar i.on{background:linear-gradient(90deg,var(--hl),var(--hl2))}
+.wiz-nav{display:flex;gap:10px;margin-top:6px}.wiz-nav button{flex:1}
+[hidden]{display:none!important}

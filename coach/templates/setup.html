@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1 class="lt">{{ 'Goal & schedule' if p else 'Set your goal' }}</h1>
 <p class="sub">Your coach builds the plan around this. You can change it any time.</p>
-<form method="post" action="/setup">
+<form method="post" action="/setup" id="setup-form"{% if not p %} data-wizard="1"{% endif %}>
 <section class="card">
   <h2>Race</h2>
   <span class="lab">Distance</span>
@@ -47,6 +47,16 @@
   <label class="f"><span class="lab">Long-run day</span><select name="long_run_day">{% for d in days %}<option value="{{ d }}" {{ 'selected' if (p.long_run_day if p else 'sun')==d }}>{{ d|title }}</option>{% endfor %}</select></label>
   <label class="f" style="margin:0"><span class="lab">Anything your coach should know?</span><textarea name="notes" placeholder="Injuries, hills, treadmill-only days, preferences…">{{ p.notes if p }}</textarea></label>
 </section>
-<button>Save</button>
+<div class="wiz-nav" hidden><button type="button" class="sec" id="wiz-back">Back</button><button type="button" id="wiz-next">Next</button></div>
+<button id="wiz-save">{{ 'Save' if p else 'Build my plan' }}</button>
 </form>
+{% if not p %}<script>(function(){var f=document.getElementById("setup-form");if(!f||!f.dataset.wizard)return;
+var steps=[].slice.call(f.querySelectorAll("section.card")),i=0,nav=f.querySelector(".wiz-nav"),back=document.getElementById("wiz-back"),next=document.getElementById("wiz-next"),save=document.getElementById("wiz-save");
+var titles=["Your race","About you","Your week","Last details"];
+var bar=document.createElement("div");bar.className="wiz-bar";bar.setAttribute("aria-hidden","true");steps.forEach(function(){bar.appendChild(document.createElement("i"))});f.insertBefore(bar,f.firstChild);
+function show(){steps.forEach(function(s,k){s.hidden=k!==i});[].forEach.call(bar.children,function(b,k){b.className=k<=i?"on":""});
+nav.hidden=false;back.style.visibility=i?"visible":"hidden";var last=i===steps.length-1;next.hidden=last;save.hidden=!last;
+document.title="Step "+(i+1)+" of "+steps.length+" · "+(titles[i]||"Setup");window.scrollTo(0,0)}
+function valid(){var ok=true;[].forEach.call(steps[i].querySelectorAll("input,select,textarea"),function(el){if(ok&&!el.checkValidity()){el.reportValidity();ok=false}});return ok}
+next.onclick=function(){if(valid()&&i<steps.length-1){i++;show()}};back.onclick=function(){if(i>0){i--;show()}};show()})();</script>{% endif %}
 {% endblock %}

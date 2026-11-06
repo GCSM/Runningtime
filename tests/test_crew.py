@@ -96,3 +96,13 @@ def test_theme_toggle_markup_and_css_overrides(tmp_path):
     assert 'localStorage.getItem("theme")' in base                                       # applied before first paint (no flash)
     css = a.get("/static/app.css").text
     assert ':root[data-theme="dark"]{' in css and ':root:not([data-theme="light"])' in css
+
+
+def test_setup_wizard_only_for_new_users_and_form_still_posts_without_js(tmp_path):
+    (a, *_), db = build(tmp_path, 1)
+    anon = TestClient(a.app)
+    signup(anon, "new@example.com", "New")
+    first = anon.get("/setup").text
+    assert 'data-wizard="1"' in first and "Build my plan" in first and 'name="race_date"' in first      # fields all present for no-JS
+    again = a.get("/setup").text                                                                          # already has a profile
+    assert 'data-wizard' not in again and ">Save<" in again
