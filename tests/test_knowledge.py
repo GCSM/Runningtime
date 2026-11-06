@@ -234,7 +234,7 @@ def test_shorter_goals_with_sensible_schedules_are_not_flagged():
 
 def test_max_long_lets_a_slow_marathoner_reach_a_real_long_run_but_km_caps_still_bind():
     slow = 450.0                                                   # 7:30/km easy: a ~5 h marathon
-    assert K.long_run_km(90, 42.195, "intermediate", 5, 240, slow) == 32.0          # 240 min = 32 km, at the intermediate cap
+    assert K.long_run_km(90, 42.195, "intermediate", 5, 300, slow) == 32.0          # open-ended: the km cap binds
     assert K.long_run_km(90, 42.195, "intermediate", 5, 210, slow) == 28.0
     assert K.long_run_km(110, 42.195, "advanced", 6, 240, 330.0) == 35.0            # fast runner: capped by distance, not time
     assert K.long_run_km(70, 21.0975, "intermediate", 5, 240, slow) <= 20.0         # half marathon cap unchanged

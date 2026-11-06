@@ -39,7 +39,7 @@
 </section>
 
 <section class="card flush">
-  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Pick the longest run you could fit each day. Your plan can only be as big as the time you give it: for a marathon make your long-run day “Extra long” (150 min) , “Max long” (240 min) or “Open-ended” (300 min) if you’re a slower runner who needs the time to cover the distance and give most other days Medium or Long; for a half marathon, “Long” (90 min) on your long-run day is enough.</p></div>
+  <div style="padding:18px 18px 4px"><h2>When can you run?</h2><p class="xs mut" style="margin-top:6px">Pick the longest run you could fit each day. Your plan can only be as big as the time you give it: for a marathon make your long-run day “Extra long” (150 min), or “Open-ended” if you’re a slower runner who needs more time to cover the distance. A half marathon is fine with “Long” (90 min).</p></div>
   {% for d in days %}{% set a = p.availability[d] if p else None %}
   <div class="day">
     <div class="top"><span class="b">{{ {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'}[d] }}</span>
@@ -49,7 +49,7 @@
         {% set cur = a.minutes if a else (120 if d=='sun' else 45) %}
         {% set ns = namespace(best=lengths[0][1]) %}{% for nm, mn in lengths %}{% if (mn - cur)|abs < (ns.best - cur)|abs %}{% set ns.best = mn %}{% endif %}{% endfor %}
         <div class="chips lens" role="radiogroup" aria-label="Run length on {{ d }}">
-          {% for nm, mn in lengths %}<label><input type="radio" name="min_{{ d }}" value="{{ mn }}" {{ 'checked' if mn == ns.best }}><span>{{ nm }}<small> {{ mn }}m</small></span></label>{% endfor %}
+          {% for nm, mn in lengths %}<label><input type="radio" name="min_{{ d }}" value="{{ mn }}" {{ 'checked' if mn == ns.best }}><span>{{ nm }}<small> {{ (mn ~ "m") if mn < 300 else "no limit" }}</small></span></label>{% endfor %}
         </div></div>
       <label class="full"><span class="lab">Usual time (optional)</span><input type="time" name="time_{{ d }}" value="{{ a.time if a else '' }}"></label>
     </div>

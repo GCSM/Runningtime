@@ -148,7 +148,7 @@ def test_run_length_is_a_choice_of_categories_not_free_numbers(tmp_path):
     (a, *_), db = build(tmp_path, 1)
     page = a.get("/setup").text
     assert 'type="radio" name="min_sun"' in page and 'name="min_sun" inputmode' not in page
-    for nm in ("Short", "Medium", "Long", "Extra long", "Max long", "Open-ended"):
+    for nm in ("Short", "Medium", "Long", "Extra long", "Open-ended"):
         assert f"<span>{nm}<small>" in page
     a.post("/setup", data={**SETUP, "baseline": "25", "min_sun": "150", "min_tue": "40"})
     p = db.for_user(1).get_profile()
