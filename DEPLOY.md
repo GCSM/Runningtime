@@ -20,18 +20,20 @@ On the first run the script:
 - installs Python and the dependencies, creates a locked-down `coach` user and the systemd service
 - detects the container's IP and timezone and writes `/etc/running-coach.env` (readable only by root and the service)
 - asks for your Anthropic API key (input hidden; press Enter to skip and add it later)
-- generates an **invite code** (needed to create an account) and prints it
+- leaves signups open (no invite code), which suits a trusted home LAN
 - starts the service and prints the URL, e.g. `http://192.168.1.50:8000`
 
-Open that URL and create your account with the invite code. Re-running the script later updates the app and restarts it
+Open that URL and create your account. Re-running the script later updates the app and restarts it
 without touching your config.
 
 Skip the prompts by passing values as environment variables (all optional):
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://192.168.1.50:8000 TZ=America/Chicago \
-STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... OPEN_SIGNUPS=1 bash deploy/install.sh
+STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
 ```
-`OPEN_SIGNUPS=1` skips the invite code; `INVITE_CODE=yourword` picks your own.
+If the app is ever reachable beyond your LAN, require a code to sign up: `REQUIRE_INVITE=1` generates one, or
+`INVITE_CODE=yourword` picks your own (or edit `INVITE_CODE` in the env file later). Remember every account's plans and
+reviews are billed to your Anthropic key.
 
 To change anything afterwards: `nano /etc/running-coach.env && systemctl restart running-coach`.
 

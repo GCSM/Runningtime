@@ -3,13 +3,14 @@
 #
 #   git clone <repo> /opt/running-coach && cd /opt/running-coach && sudo bash deploy/install.sh
 #
-# First run: detects this container's IP and timezone, asks for your Anthropic API key, generates an invite
-# code, writes /etc/running-coach.env, starts the service and prints the URL. Re-running updates the app and
-# restarts it without touching your config.
+# First run: detects this container's IP and timezone, asks for your Anthropic API key, writes
+# /etc/running-coach.env, starts the service and prints the URL. Re-running updates the app and restarts it
+# without touching your config. Signups are open (intended for a trusted home LAN); see REQUIRE_INVITE below.
 #
 # Non-interactive / overrides (all optional), e.g.:
-#   ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://192.168.1.50:8000 TZ=America/Chicago OPEN_SIGNUPS=1 \
+#   ANTHROPIC_API_KEY=sk-ant-... PUBLIC_URL=http://192.168.1.50:8000 TZ=America/Chicago \
 #     STRAVA_CLIENT_ID=... STRAVA_CLIENT_SECRET=... bash deploy/install.sh
+#   Require an invite code to sign up:  REQUIRE_INVITE=1 (generates one)  or  INVITE_CODE=yourword
 #
 # --configure-only   write the config file and stop (no apt / systemd); used for testing.
 set -euo pipefail
@@ -49,7 +50,10 @@ configure() {
     read -rsp "Anthropic API key (input hidden, Enter to skip): " key; echo
   fi
 
-  if [ "${OPEN_SIGNUPS:-0}" = 1 ]; then invite=""; else invite="${INVITE_CODE:-$(head -c 32 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8)}"; fi
+  invite="${INVITE_CODE:-}"
+  if [ -z "$invite" ] && [ "${REQUIRE_INVITE:-0}" = 1 ]; then
+    invite="$(head -c 32 /dev/urandom | base64 | tr -dc 'a-z0-9' | head -c 8)"
+  fi
 
   set_var ANTHROPIC_API_KEY "$key"
   set_var PUBLIC_URL "$url"
@@ -68,7 +72,7 @@ configure() {
   echo "  URL:          $url"
   echo "  Timezone:     $tz"
   if [ -n "$invite" ]; then echo "  Invite code:  $invite   (needed to create an account; share it only with people you trust)"
-  else echo "  Signups:      open to anyone who can reach the app"; fi
+  else echo "  Signups:      open to anyone who can reach the app (fine on a trusted LAN; use INVITE_CODE if that changes)"; fi
   [ -n "$key" ] || echo "  ! No API key set: add ANTHROPIC_API_KEY to $ENV_FILE and run 'systemctl restart running-coach'."
   case "$url" in http://*) echo "  Note: plain HTTP. Passwords cross your network unencrypted; fine on a trusted home LAN only." ;; esac
 }
