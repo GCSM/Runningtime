@@ -133,6 +133,21 @@ def sanitize(
                 downgrade(w, f"at most {limit} hard session{'s' * (limit != 1)} this week at your level and phase"); continue
             kept.append(w)
 
+    # Hard-session volume: about half of a session is warm-up/cool-down, so cap session distance at 45% of the week
+    # (true hard work then stays near the 80/20 guideline). Easy runs are topped up below to restore the week's volume.
+    for ws, items in by_week.items():
+        wk = allowed_weeks.get(date.fromisoformat(ws))
+        q = [w for w in items if w["type"] in K.QUALITY_TYPES]
+        q_km = sum(w["distance_km"] for w in q)
+        if wk is None or not q or q_km <= K.HARD_SHARE_MAX * wk.target_km + 0.05:
+            continue
+        s = K.HARD_SHARE_MAX * wk.target_km / q_km
+        for w in q:
+            new = max(round(w["distance_km"] * s, 1), min(3.0, w["distance_km"]))
+            w["duration_min"] = int(round(w["duration_min"] * new / w["distance_km"])) if w["distance_km"] else w["duration_min"]
+            w["distance_km"] = new
+        notes.append(f"week of {ws}: hard sessions shortened to stay within {K.HARD_SHARE_MAX:.0%} of the week's distance")
+
     # Long runs: capped by size, time, and growth over the previous 4 weeks.
     cap_km = K.long_run_cap_km(profile.goal_km, level)
     cap_min = K.long_run_max_minutes(profile.goal_km)
@@ -212,7 +227,9 @@ def sanitize(
         total = sum(w["distance_km"] for w in runs)
         room = wk.target_km * VOLUME_SLACK - race_km - done_km_by_week.get(ws, 0.0)
         if runs and total > room:
-            s = max(room / total, 0.4)
+            # Scale to fit exactly. Only the current week keeps a floor (some of it is already behind the athlete).
+            floor = 0.4 if done_km_by_week.get(ws, 0.0) > 0 or room <= 0 else 0.0
+            s = max(room / total, floor)
             notes.append(f"week of {ws}: scaled {total:.0f}km to fit {wk.target_km:.0f}km target")
             for w in runs:
                 w["distance_km"] = round(w["distance_km"] * s, 1)

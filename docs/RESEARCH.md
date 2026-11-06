@@ -99,8 +99,8 @@ still bound them (conf. C for the half/marathon shares). Event caps: claude-coac
 
 **Used in code.** Quality sessions per week by level and phase (beginner: 0 in base, ≤1 later; intermediate: ≤1 base,
 ≤2 build/peak when ≥4 run days; advanced ≤2); never on consecutive days or adjacent to the long run; none in
-recovery weeks; combined tempo+interval distance ≤ 35% of the week (the hard portion is far less once warm-up and
-cool-down are counted); ≥75% of weekly distance easy.
+recovery weeks; combined tempo+interval *session* distance ≤ 45% of the week (about half of a session is warm-up and
+cool-down, so true hard work stays near 20%, inside Seiler's 85/15–75/25); easy running ≥ 75% of weekly distance.
 
 ## 6. Taper
 

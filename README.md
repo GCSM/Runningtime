@@ -28,6 +28,24 @@ via Safari → Share → Add to Home Screen), with light and dark mode.
 - **Automatic.** A background task syncs Strava every `SYNC_INTERVAL_MIN` and reviews the plan once at the start of each
   week (`AUTO_ADJUST=true`). You can also hit **Sync Strava & adjust plan** any time.
 
+## Where the numbers come from
+
+Plans are built from published coaching material, not guesses. [docs/RESEARCH.md](docs/RESEARCH.md) records what published
+plans and coaching research say, with sources and a confidence rating for each fact (weekly volume by goal and level,
+progression and recovery weeks, long runs, intensity, taper, plan length, beginners, pace calculation, workout types,
+returning from a layoff). `coach/knowledge.py` encodes it as data, and every constant traces to a row in that document.
+
+- **Volume** targets published peak ranges for the athlete's goal and level (a 5K plan for an intermediate runner peaks
+  around 30–46 km/week, not 15), reached by a level-based ramp from where the athlete *actually is* (Strava, else the number
+  they typed, else a stated assumption). The Plan tab shows start → peak and says plainly when schedule or time-to-race is the limit.
+- **Paces** (easy, marathon, threshold, interval, repetition) are computed in code from the goal time with the Daniels/Gilbert
+  VDOT equations (checked against published tables), never by the language model.
+- **Rules enforced in code** on whatever the model returns: hard-session limits by level and phase, an easy day between hard
+  sessions and either side of the long run, no hard work in recovery weeks, long-run size/time/growth caps, hard sessions at most
+  45% of the week's distance, under-delivering weeks topped up, no hard sessions for a week after a pain report.
+- Limits of the research (several primary sources could not be read directly, and published plans disagree by up to 2×) are
+  listed at the bottom of the research doc. This is general fitness guidance, not medical advice.
+
 ## Run it
 
 ```bash
@@ -68,7 +86,9 @@ restricted accordingly.
 ```bash
 pip install -r requirements-dev.txt && pytest
 ```
-The tests use a fake coach and fake Strava, so they need no network or API key.
+The tests use a fake coach and fake Strava, so they need no network or API key (running them costs nothing).
+`tests/test_knowledge.py` pins the constants to the research; `tests/test_scenarios.py` checks the weekly volume across 2,700
+athlete setups, feeds deliberately bad plans through the rule checker, and runs the whole service end to end.
 
 ## Ideas for next
 Strava webhooks (instant sync instead of polling) · Discord bot front-end (`/today`, `/checkin`) calling the same

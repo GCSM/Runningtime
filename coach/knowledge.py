@@ -129,7 +129,7 @@ def long_run_km(week_km: float, goal_km: float, level: str, run_days: int, day_m
               long_run_max_minutes(goal_km) * 60 / pace_s_km]
     if day_minutes:
         limits.append(day_minutes * 60 / pace_s_km)
-    return round(min(limits) * 2) / 2
+    return math.floor(min(limits) * 2) / 2   # round DOWN to 0.5 km so a cap is never exceeded
 
 
 # ---- 6. Taper (fraction of peak volume per taper week; the last entry is race week and includes the race) ----------
@@ -169,7 +169,7 @@ def quality_limit(level: str, phase: str, recovery: bool, run_days: int) -> int:
 
 
 QUALITY_TYPES = ("tempo", "intervals")
-HARD_SHARE_MAX = 0.35        # tempo+interval *workout distance* (incl. warm-up/cool-down) as a share of the week
+HARD_SHARE_MAX = 0.45        # hard-session *distance* ≤45% of the week: ~half of a session is warm-up/cool-down, so true hard work ≲22% (80/20: 85/15–75/25)
 EASY_SHARE_MIN = 0.75        # ≥75% easy (Seiler: 85/15 – 75/25)
 
 
