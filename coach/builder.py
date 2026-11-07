@@ -299,6 +299,7 @@ def tempo_like_goal(a: Athlete, reps: int, metres: int) -> Session:
 def easy_session(a: Athlete, km: float, *, strides: bool = False, title: str | None = None, run_walk: tuple[int, int] | None = None,
                  kind: str = "easy", transition: bool = False) -> Session:
     cue = pace_cue(a, "easy", "conversational, RPE 3–4")
+    psent = f" Pace {cue}." if (a.text and a.text.get("easy")) else ""      # without a known pace the RPE cue is already in the sentence
     if run_walk:
         mins = km * a.easy * WALK_PACE_FACTOR / 60
         run_s, walk_s = run_walk_for(run_walk, mins)
@@ -315,11 +316,11 @@ def easy_session(a: Athlete, km: float, *, strides: bool = False, title: str | N
     t = title or (base + (" + strides" if strides else ""))
     aid = " Practise taking a drink or gel on the move." if a.bucket >= 21 else ""
     if kind == "long":
-        d = f"Relaxed and conversational the whole way (RPE 3–4): the aim is time on your feet, not speed.{aid} Pace {cue}."
+        d = f"Relaxed and conversational the whole way (RPE 3–4): the aim is time on your feet, not speed.{aid}{psent}"
     elif kind == "medium":
-        d = f"Steady and conversational, a little longer than your other weekday runs (RPE 3–4). Pace {cue}."
+        d = f"Steady and conversational, a little longer than your other weekday runs (RPE 3–4).{psent}"
     else:
-        d = f"Easy and conversational (RPE 3–4): you should be able to talk in full sentences. Pace {cue}."
+        d = f"Easy and conversational (RPE 3–4): you should be able to talk in full sentences.{psent}"
     if transition:
         d += " You are moving from run/walk to continuous running: run the whole way, but take a 1 min walk break if you need one."
     if strides:
@@ -737,8 +738,10 @@ def race_session(a: Athlete) -> Session:
     name = K.goal_name(a.goal_km)
     cue = goal_pace_text(a) if a.goal_pace else "even effort, start easy"
     fuel = " Fuel and drink as you practised." if a.bucket >= 21 else ""
-    return Session("race", f"Race day: {name}", f"Race day. Start a touch slower than goal pace for the first {K.fmt_dist(min(3.0, a.goal_km / 5), a.units)}, "
-                   f"settle into {cue}, and save something for the last quarter.{fuel}", a.goal_km, mins, cue)
+    return Session("race", f"Race day: {name}", (f"Race day. Start a touch slower than goal pace for the first {K.fmt_dist(min(3.0, a.goal_km / 5), a.units)}, settle into {cue}, "
+                    f"and save something for the last quarter.{fuel}" if a.goal_pace else
+                    f"Race day. Start easy for the first {K.fmt_dist(min(3.0, a.goal_km / 5), a.units)}, then settle into a strong, even effort you could hold to the end, "
+                    f"and save something for the last quarter.{fuel}"), a.goal_km, mins, cue)
 
 
 def race_week(a: Athlete, w: dict, ws: date, days, hard_dates: list[date]) -> list[dict]:

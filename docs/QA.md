@@ -121,3 +121,10 @@ Re-run: `python tools/plan_eval.py capture|live|compare OUT` (live needs ANTHROP
    include 1-2 benchmark time trials (3 or 5 km) that recalibrate paces; not for beginners or very short plans.
 4. **Readiness:** "Not feeling 100%" on Today: tired / under the weather / busy week. Code eases only the rest of this week (race and later weeks untouched).
 Not done: separate recovery vs general-aerobic runs; Runna/TrainAsONE internals were unreachable (403), so those comparisons rest on search summaries.
+
+### Round 2 blind comparison (after the gap fixes)
+Builder won all five scenarios (5K narrowly; half clearly): concrete paces everywhere, benchmark time trials, goal-pace work inside long runs, growing marathon-pace
+blocks, consistent taper sharpeners. Sonnet's plans: paces missing or undefined, no half-marathon pace work in long runs, first marathon-pace work in week 16,
+duplicated text, and in one plan a 30 km run with 14 km at marathon pace three weeks out. Builder defects the reviewer found: duplicated pace/RPE sentence when no
+pace is known and "goal pace" race text with no goal (both fixed), recovery weeks are plain easy runs, hard days can crowd (marathon-pace run + paced long run
+3 days apart), 5K run/walk -> continuous jump (softened with a transition sentence only).
