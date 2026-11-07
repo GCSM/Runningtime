@@ -384,3 +384,138 @@ def test_small_changes_and_race_or_cross_workouts_are_not_annotated():
 ])
 def test_pain_detection_uses_whole_words_and_understands_negation(text, expected):
     assert mentions_pain(text) is expected
+
+
+# ================================================== exact numbers for the volume rules (mutation-test survivors) =========
+def vol(out, week_offset=0):
+    ws = (TODAY + timedelta(weeks=week_offset)).isoformat()
+    return round(sum(x["distance_km"] for x in out if x["week_start"] == ws and x["type"] != "race"), 1)
+
+
+def test_top_up_spreads_the_shortfall_evenly_up_to_95_percent_of_target_limited_by_growth():
+    p = profile(minutes=120)
+    out, notes = run([w(1, "easy", 6), w(3, "easy", 6), w(5, "easy", 6), w(6, "long", 12)], p=p, wks=weeks(14, target=40, long_km=12))
+    # shortfall to 95% of 40 = 38: 30 planned, 8 needed; each easy run may grow to 1.5x (9 km) so 9 km of room: 8/9 of it -> +2.667 each
+    assert [only(out, i)["distance_km"] for i in (1, 3, 5)] == [8.7, 8.7, 8.7]
+    assert [only(out, i)["duration_min"] for i in (1, 3, 5)] == [52, 52, 52]                  # 36 min * 8.667/6
+    assert vol(out) == 38.1 and only(out, 6)["distance_km"] == 12.0
+    assert "week of 2026-11-09: easy runs lengthened so the week reaches 38 of 40 km" in notes
+
+
+def test_top_up_never_makes_an_easy_run_longer_than_85_percent_of_the_long_run_or_the_days_minutes():
+    p = profile(minutes=120)
+    out, notes = run([w(1, "easy", 9), w(3, "easy", 9), w(5, "easy", 9), w(6, "long", 10)], p=p, wks=weeks(14, target=60, long_km=10))
+    assert [only(out, i)["distance_km"] for i in (1, 3, 5)] == [9.0, 9.0, 9.0]               # 85% of the 10 km long run is 8.5: no room at all
+    assert any("your available days/minutes limit it" in n for n in notes) and not any("lengthened" in n for n in notes)
+    p40 = profile(minutes=40, long_minutes=120)
+    out, _ = run([w(1, "easy", 5, mins=30), w(3, "easy", 5, mins=30), w(5, "easy", 5, mins=30), w(6, "long", 20, mins=120)], p=p40, wks=weeks(14, target=60, long_km=20))
+    assert all(only(out, i)["duration_min"] <= 40 for i in (1, 3, 5)) and all(only(out, i)["distance_km"] <= 6.7 for i in (1, 3, 5))
+
+
+def test_when_the_growth_limited_pass_falls_short_a_second_pass_uses_the_available_time():
+    p = profile(minutes=120)
+    out, notes = run([w(1, "easy", 5), w(3, "easy", 5), w(5, "easy", 5), w(6, "long", 10)], p=p, wks=weeks(14, target=40, long_km=10))
+    # pass 1: each easy run to 1.5x (7.5); that leaves 32.5 of 40 (81%), under the 85% floor, so pass 2 allows up to 85% of the long run (8.5 km)
+    assert [only(out, i)["distance_km"] for i in (1, 3, 5)] == [8.5, 8.5, 8.5] and vol(out) == 35.5
+    assert not any("limit it" in n for n in notes)                                            # 35.5 is above the floor now
+
+
+def test_a_week_already_at_or_above_85_percent_is_left_alone():
+    p = profile(minutes=120)
+    out, notes = run([w(1, "easy", 7), w(3, "easy", 7), w(5, "easy", 7), w(6, "long", 13)], p=p, wks=weeks(14, target=40, long_km=13))      # 34.0 = exactly 85%
+    assert vol(out) == 34.0 and not notes_about(notes, "lengthened")
+
+
+def notes_about(notes, word):
+    return [n for n in notes if word in n]
+
+
+def test_top_up_counts_runs_already_done_this_week_and_skips_race_week():
+    p = profile(minutes=120)
+    out, notes = run([w(3, "easy", 6), w(5, "easy", 6)], p=p, wks=weeks(14, target=30, long_km=0), done_km_by_week={monday(TODAY): 20.0})      # 20 done + 12 = 32 >= 25.5
+    assert [only(out, i)["distance_km"] for i in (3, 5)] == [6.0, 6.0]
+    race_wk = (monday(RACE) - TODAY).days // 7
+    out, notes = run([w((RACE - TODAY).days - 2, "easy", 3)], p=p, wks=weeks(14, target=30, long_km=0))
+    assert only(out, (RACE - TODAY).days - 2)["distance_km"] == 3.0                         # race week is never topped up
+
+
+def test_a_week_over_the_ceiling_is_scaled_exactly_and_the_current_weeks_floor_applies():
+    p = profile(minutes=300)
+    out, notes = run([w(1, "easy", 11.1, mins=67), w(3, "easy", 11.1, mins=67), w(5, "easy", 11.1, mins=67)], p=p, wks=weeks(14, target=30, long_km=0))      # 33.3 vs 33.0
+    assert [only(out, i)["distance_km"] for i in (1, 3, 5)] == [11.0, 11.0, 11.0] and any("scaled 33km to fit 30km target" in n for n in notes)
+    out, _ = run([w(1, "easy", 11.0, mins=66), w(3, "easy", 11.0, mins=66), w(5, "easy", 11.0, mins=66)], p=p, wks=weeks(14, target=30, long_km=0))        # 33.0: not over
+    assert vol(out) == 33.0
+    out, _ = run([w(1, "easy", 11.1, mins=67), w(3, "easy", 11.1, mins=67), w(5, "easy", 11.1, mins=67)], p=p, wks=weeks(14, target=30, long_km=0),
+                 done_km_by_week={monday(TODAY): 10.0})                                    # room 23 of 33.3 -> 0.69
+    assert [only(out, i)["distance_km"] for i in (1, 3, 5)] == [7.7, 7.7, 7.7] and [only(out, i)["duration_min"] for i in (1, 3, 5)] == [46, 46, 46]
+    out, _ = run([w(1, "easy", 11.1, mins=67), w(3, "easy", 11.1, mins=67)], p=p, wks=weeks(14, target=30, long_km=0), done_km_by_week={monday(TODAY): 40.0})   # no room: floor 0.4
+    assert [only(out, i)["distance_km"] for i in (1, 3)] == [4.4, 4.4]
+
+
+def test_hard_session_share_is_exactly_45_percent_with_a_3_km_floor():
+    p = profile(minutes=300)
+    out, notes = run([w(1, "tempo", 12, mins=72), w(4, "intervals", 12, mins=72)], p=p, wks=weeks(14, target=40))               # 24 km hard of 40 -> scale 0.75
+    assert [only(out, i)["distance_km"] for i in (1, 4)] == [9.0, 9.0] and [only(out, i)["duration_min"] for i in (1, 4)] == [54, 54]
+    assert any("hard sessions shortened to stay within 45%" in n for n in notes)
+    out, notes = run([w(1, "tempo", 9.0, mins=54), w(4, "intervals", 9.01, mins=54)], p=p, wks=weeks(14, target=40))               # 18.01: inside the +0.05 slack
+    assert [only(out, i)["distance_km"] for i in (1, 4)] == [9.0, 9.0]
+    out, notes = run([w(1, "tempo", 9.0, mins=54), w(4, "intervals", 9.2, mins=55)], p=p, wks=weeks(14, target=40))               # 18.2: over
+    assert only(out, 1)["distance_km"] < 9.0
+    out, _ = run([w(1, "tempo", 4, mins=24), w(4, "intervals", 4, mins=24)], p=p, wks=weeks(14, target=6.5))                       # share would give 1.5 km: floor of 3 km
+    assert [only(out, i)["distance_km"] for i in (1, 4)] == [3.0, 3.0]
+
+
+def test_long_run_growth_chains_from_one_long_run_to_the_next_and_forgets_runs_over_28_days_old():
+    p = profile(goal_km=42.195, minutes=120, long_minutes=300)
+    raw = [w(6, "long", 30, mins=195), w(13, "long", 30, mins=195), w(20, "long", 30, mins=195)]
+    out, _ = run(raw, p=p, wks=weeks(14, target=300, long_km=32), longest_recent_km=20.0)
+    # from a recent 20 km: max(22, 22.5) = 22.5, then from 22.5: max(24.75, 25) = 25, then from 25: max(27.5, 27.5) = 27.5
+    assert [only(out, i)["distance_km"] for i in (6, 13, 20)] == [22.5, 25.0, 27.5]
+    out, _ = run([w(6 + 7 * 5, "long", 30, mins=195)], p=p, wks=weeks(14, target=300, long_km=32), longest_recent_km=10.0)             # 36 days out: the 10 km run is forgotten
+    assert only(out, 41)["distance_km"] == 30.0
+    out, _ = run([w(6 + 7 * 3, "long", 30, mins=195)], p=p, wks=weeks(14, target=300, long_km=32), longest_recent_km=10.0)             # 27 days out: still counts
+    assert only(out, 27)["distance_km"] == 12.5
+
+
+def test_a_half_marathon_long_run_over_150_minutes_is_cut_to_what_fits():
+    p = profile(goal_km=21.0975, minutes=120, long_minutes=300)
+    out, notes = run([w(6, "long", 24, mins=200)], p=p, wks=weeks(14, target=300, long_km=24))
+    assert only(out, 6)["distance_km"] == 18.0 and only(out, 6)["duration_min"] == 150 and any("long run reduced from 24.0 to 18.0" in n for n in notes)
+    out, _ = run([w(6, "long", 19, mins=150)], p=p, wks=weeks(14, target=300, long_km=24))
+    assert only(out, 6)["distance_km"] == 19.0                                                   # exactly 150 minutes is fine
+
+
+def test_text_is_only_rewritten_when_the_change_is_more_than_5_percent():
+    p = profile(minutes=300)
+    out, _ = run([w(1, "easy", 13, mins=80, title="Easy 13 km"), w(3, "easy", 13, mins=80, title="Easy 13 km")], p=p, wks=weeks(14, target=100))   # 80 min > 70: cap
+    assert only(out, 1)["title"] == "Easy 11.4 km"                                                # 13 km * 70/80
+    out, _ = run([w(1, "easy", 11.8, mins=71, title="Easy 11.8 km")], p=p)                      # 71 min vs cap 70 (+1 grace): untouched
+    assert only(out, 1)["title"] == "Easy 11.8 km" and only(out, 1)["distance_km"] == 11.8
+    assert retitle("Tempo 19 km", 20.0, 18.9) == "Tempo 18.9 km" and retitle("Tempo 19 km", 20.0, 19.0) == "Tempo 19 km"      # 1 km is exactly 5% of 20: still "same"
+    out, _ = run([w(6, "long", 14, mins=100, title="Steady run", desc="no distance in the title")], p=profile(minutes=300, long_minutes=200), wks=weeks(14, target=300, long_km=10))
+    assert "Adjusted from 14 km to 11 km" in only(out, 6)["description"]                         # a long run with no distance to rewrite gets the note instead
+    out, _ = run([w(6, "long", 14, mins=100, title="Long run 14 km")], p=profile(minutes=300, long_minutes=200), wks=weeks(14, target=300, long_km=10))
+    assert only(out, 6)["title"] == "Long run 11 km" and "Adjusted" not in only(out, 6)["description"]
+
+
+def test_the_default_race_duration_uses_the_goal_pace_or_the_easy_pace():
+    out, _ = run([], p=profile(goal_km=10.0, goal_time_s=50 * 60))
+    assert [x["duration_min"] for x in out if x["type"] == "race"] == [50]
+    out, _ = run([], p=profile(goal_km=10.0))
+    assert [x["duration_min"] for x in out if x["type"] == "race"] == [60]
+
+
+def test_a_long_run_is_moved_off_the_last_five_days_before_the_race_but_not_six():
+    p5 = profile(long_day="tue")                                                               # race on a Sunday: Tuesday is 5 days before
+    off = (RACE - TODAY).days
+    out, _ = run([w(off - 5, "long", 14), w(off - 12, "long", 14)], p=p5)
+    assert quality_types(out)[(RACE - timedelta(days=5)).isoformat()] == "easy" and quality_types(out)[(RACE - timedelta(days=12)).isoformat()] == "long"
+    p6 = profile(long_day="mon")
+    out, _ = run([w(off - 6, "long", 14)], p=p6)
+    assert quality_types(out)[(RACE - timedelta(days=6)).isoformat()] == "long"
+
+
+@pytest.mark.parametrize("text,expected", [("no idea but my knee hurts", True), ("not really injured", False), ("without any real pain", False), ("never had any pain in my knee", False),
+                                           ("no sharp pain", False), ("it doesn't hurt", False)])
+def test_negation_only_covers_the_few_words_after_it(text, expected):
+    assert mentions_pain(text) is expected

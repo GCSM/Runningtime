@@ -19,7 +19,7 @@ _BODY = r"(?:knee|ankle|achilles|calf|calves|shin|hip|hamstring|quad|quads|thigh
 _PAIN = re.compile(
     r"\b(?:injur(?:y|ed|ies)|pain(?:ful)?|hurts?|hurting|sore(?:ness)?|strain(?:ed)?|sprain(?:ed)?|swollen|swelling|stress fracture|shin splints?|tendin(?:itis|opathy)|niggles?|limp(?:ing)?)\b"
     rf"|\b(?:tight|ache|aches|aching)\b(?=[^.;,]{{0,25}}\b{_BODY}\b)|\b{_BODY}\b[^.;,]{{0,25}}\b(?:tight|aches?|aching)\b", re.I)
-_NEGATED = re.compile(r"\b(?:no|not|never|without|zero|free of|nothing|isn'?t|aren'?t|wasn'?t|weren'?t|don'?t|doesn'?t|didn'?t)\b[^.;!?]{0,18}$", re.I)
+_NEGATED = re.compile(r"\b(?:no|not|never|without|zero|free of|nothing|isn'?t|aren'?t|wasn'?t|weren'?t|don'?t|doesn'?t|didn'?t)\s+(?:[\w'-]+\s+){0,2}$", re.I)
 _PAIN_FREE = re.compile(r"\b(?:pain|injury)[- ]free\b", re.I)
 
 

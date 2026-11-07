@@ -193,7 +193,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
                 "name": p.name, "level": p.experience, "notes": p.notes,
                 "goal": p.goal_label, "goal_km": p.goal_km, "race_date": p.race_date.isoformat(),
                 "goal_time": _fmt_hms(p.goal_time_s) if p.goal_time_s else None,
-                "weeks_until_race": (p.race_date - today).days // 7,
+                "weeks_until_race": (monday(p.race_date) - monday(today)).days // 7 + 1,       # calendar weeks including race week: matches the skeleton
             },
             "availability": {d: p.availability[d].model_dump() for d in DAYS if d in p.availability},
             "long_run_day": p.long_run_day,

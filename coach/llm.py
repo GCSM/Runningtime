@@ -36,7 +36,7 @@ If `race_paces_per_km` is present, use it for "5K pace", "10K pace", "half-marat
 
 Hard efforts and progression (checked by code afterwards, so plan them properly):
 - A long run with a pace finish (marathon, half-marathon, tempo or progression) is a hard effort. At most two hard efforts (tempo, intervals,
-  paced long run) in any 7 days, and at least two easy days between a hard effort and the next one.
+  paced long run) in any 7 days. As above, keep at least one easy or rest day between any two hard efforts (a rest day counts).
 - Threshold-pace work adds up to at most ~10% of the week's distance (12% in a marathon block) and interval-pace work to at most 8%; the rest of
   a quality session is warm-up, jogs and cool-down.
 - Quality sessions must progress: add reps or minutes by ~10-15% across the build, step back in recovery weeks, alternate threshold and

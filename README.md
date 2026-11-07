@@ -159,7 +159,7 @@ skipped runs not counted), Today suggests making the next two weeks slightly eas
 It's one tap to apply or "Not now" (quiet for a week); applying also stays quiet for two weeks. It never fires in the last three weeks before a race
 or while pain mode is on. "Review & adjust my plan" can then re-plan the weeks after.
 
-### Checking plan quality
+### Checking plan quality (see docs/QA.md for the full test strategy, defects found and known gaps)
 
 `python tools/plan_eval.py capture OUT` writes the exact coach request for five realistic athletes (5K, 10K, half, two marathons);
 `python tools/plan_eval.py live OUT` sends them to the real model (needs `ANTHROPIC_API_KEY`); `python tools/plan_eval.py audit OUT`
