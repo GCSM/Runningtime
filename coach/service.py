@@ -310,6 +310,29 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
                                           "goal": K.goal_name(p.goal_km), "paces_s": inp.paces_raw, "paces_basis": inp.paces_basis})
         return workouts, out["summary"].rstrip() + "\n\n" + text
 
+    # ---- re-planning after the athlete changed goal or schedule -----------------------------------------------
+    def plan_pending(self) -> dict | None:
+        """Set while a plan is being rebuilt for a changed goal/schedule: the old plan is for a different goal, so it is hidden until the new
+        one exists. {"since", "note", "error"}; `error` is the last failure (the athlete can retry)."""
+        return self.db.kv_get("plan_pending")
+
+    def begin_replan(self, note: str) -> None:
+        self.db.kv_set("plan_pending", {"since": datetime.now(timezone.utc).isoformat(timespec="seconds"), "note": note, "error": None})
+
+    def run_replan(self) -> str:
+        """Rebuild the plan for the pending change. The old plan stays hidden until this succeeds; a failure is remembered so the page can say
+        what happened and offer a retry (nothing is silently replaced by a different planner)."""
+        from .errors import explain
+        pend = self.plan_pending() or {"note": "I changed my goal or schedule in Goal & schedule."}
+        try:
+            text = self.review(pend["note"])
+        except Exception as e:  # noqa: BLE001
+            msg = str(e) if isinstance(e, (UserError, StravaError)) else (explain(e) or f"Something went wrong: {e}")
+            self.db.kv_set("plan_pending", {**pend, "error": msg})
+            raise
+        self.db.kv_delete("plan_pending")
+        return text
+
     def generate_plan(self) -> str:
         with self._lock:
             p = self._require_profile()

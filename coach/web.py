@@ -27,7 +27,7 @@ from .chat import ChatCoach, ChatService
 from .config import Settings
 from .errors import explain
 from .db import DB
-from .builder import BuilderCoach, FallbackCoach
+from .builder import BuilderCoach
 from .llm import Coach
 from .models import DAYS, KM_PER_MI, DayAvail, Profile
 from .service import CoachService, UserError
@@ -68,7 +68,7 @@ def make_planner(settings: Settings):
     """Who writes the day-by-day plan: the code-built planner (PLAN_ENGINE=builder) or the language model (default)."""
     if settings.plan_engine == "builder":
         return BuilderCoach()
-    return FallbackCoach(Coach(settings.model, effort=settings.effort))          # the model first; the code-built planner if it cannot finish
+    return Coach(settings.model, effort=settings.effort)
 
 
 def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None, spotify_factory=None) -> FastAPI:
@@ -311,11 +311,20 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         d = request.state.svc.dashboard()
         if not d["profile"]:
             return RedirectResponse("/setup", 303)
+        if request.state.svc.plan_pending():
+            return pending_page(request)
         return render(request, "today.html", d=d, units=d["profile"].units, settings=settings)
+
+    def pending_page(request: Request):
+        uid = request.state.user["id"]
+        job = public_job(uid)
+        return render(request, "pending.html", pending=request.state.svc.plan_pending(), job=job, running=job.get("status") == "running" and job.get("kind") in ("review", "generate"))
 
     @app.get("/plan")
     def plan(request: Request):
         svc = request.state.svc
+        if svc.plan_pending():
+            return pending_page(request)
         p = svc.db.get_profile()
         return render(request, "plan.html", weeks=svc.full_plan(), units=p.units if p else "km", today=svc.today().isoformat(),
                       has_profile=bool(p), outlook=svc.db.kv_get("volume_outlook"),
@@ -324,6 +333,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     @app.get("/progress")
     def progress(request: Request):
         svc = request.state.svc
+        if svc.plan_pending():
+            return pending_page(request)
         p = svc.db.get_profile()
         return render(request, "progress.html", pr=svc.progress(), units=p.units if p else "km", runs=svc.recent_runs())
 
@@ -436,8 +447,8 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         if had_plan and old is not None and old != p:
             # The plan was built from the old schedule and goal: re-plan now rather than leave it stale until someone taps Review.
             uid = request.state.user["id"]
-            start_job(uid, "review", "Re-planning around your changes", lambda: svc.review("I changed my goal or schedule in Goal & schedule."),
-                      "Your plan was updated for your new goal and schedule.")
+            svc.begin_replan("I changed my goal or schedule in Goal & schedule.")           # hides the old plan until the new one exists
+            start_job(uid, "review", "Re-planning around your changes", svc.run_replan, "Your plan was updated for your new goal and schedule.")
             warn = svc.readiness_warnings()
             return back("/", err=f"Saved, but heads-up: {warn[0]}") if warn else back("/", "Saved. Re-planning around your changes…")
         warn = svc.readiness_warnings()
@@ -446,6 +457,14 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         return back("/", "Saved. Tap “Review & adjust” to re-plan around the changes." if had_plan else "Saved. One last step before your plan.")
 
     # ---- actions ---------------------------------------------------------
+    @app.post("/plan/retry")
+    def plan_retry(request: Request):
+        uid, svc = request.state.user["id"], request.state.svc
+        if not svc.plan_pending():
+            return back("/", err="Nothing is waiting to be re-planned.")
+        job = start_job(uid, "review", "Re-planning around your changes", svc.run_replan, "Your plan was updated for your new goal and schedule.")
+        return job_response(request, uid, job)
+
     @app.post("/plan/generate")
     def generate(request: Request):
         uid = request.state.user["id"]

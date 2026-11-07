@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% block body %}
+<div class="kick rise">Your plan</div><h1 class="lt rise">Building your new plan</h1>
+<section class="card rise" role="status" aria-live="polite" style="text-align:center;padding:28px 20px">
+  {% if running %}
+    <div class="spin" aria-hidden="true" style="margin:0 auto 14px"></div>
+    <h2>Your coach is working on it</h2>
+    <p class="sm" style="margin-top:8px">You changed your goal or schedule, so your old plan no longer applies. It's hidden while the new one is built, and this page will switch to it when it's ready. A long plan can take a minute or two.</p>
+  {% elif pending and pending.error %}
+    <h2>The new plan couldn't be built</h2>
+    <p class="sm" style="margin-top:8px">{{ pending.error }}</p>
+    <p class="sm mut" style="margin-top:8px">Your goal and schedule are saved. Nothing was replaced by a different plan, and your completed runs are untouched.</p>
+    <form method="post" action="/plan/retry" data-job class="stack" style="margin-top:16px"><button>Try again</button></form>
+    <p class="sm" style="margin-top:12px"><a href="/setup">Change my goal or schedule</a></p>
+  {% else %}
+    <h2>Ready to build your new plan</h2>
+    <p class="sm" style="margin-top:8px">The last attempt didn't finish (the server may have restarted). Your goal and schedule are saved.</p>
+    <form method="post" action="/plan/retry" data-job class="stack" style="margin-top:16px"><button>Build my plan</button></form>
+  {% endif %}
+</section>
+<script>
+(function(){
+  /* While the plan is building, check back and switch to the finished plan (or the error) without the athlete having to refresh. */
+  {% if running %}
+  var t=setInterval(async function(){
+    try{const r=await fetch('/api/job',{headers:{'X-Requested-With':'fetch'},cache:'no-store'});
+        const j=await r.json();if(j.status!=='running'){clearInterval(t);location.reload()}}catch(e){}
+  },3000);
+  {% endif %}
+})();
+</script>
+{% endblock %}

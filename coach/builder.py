@@ -819,23 +819,3 @@ class BuilderCoach:
         out["summary"] = summary_text(ctx)
         return out
 
-
-class FallbackCoach:
-    """The language model writes the plan; if it can't (answer cut off twice, no tool call, a refusal), the code-built planner does, so the athlete
-    gets a good plan instead of an error. A missing API key or other configuration problem is NOT hidden: that message still reaches the user."""
-
-    def __init__(self, primary, fallback=None):
-        self.primary = primary
-        self.fallback = fallback or BuilderCoach()
-
-    def plan(self, ctx: dict, *, mode: str, feedback: list[str] | None = None) -> dict:
-        from .errors import CoachUnavailable
-        try:
-            return self.primary.plan(ctx, mode=mode, feedback=feedback)
-        except CoachUnavailable:
-            raise
-        except RuntimeError as e:
-            out = self.fallback.plan(ctx, mode=mode, feedback=feedback)
-            out["summary"] = (f"Your AI coach couldn't finish this plan ({str(e).rstrip('.').lower()}), so the app's own planner built it from the same "
-                              f"rules. Ask for a review later if you'd like the coach to rewrite it. ") + out["summary"]
-            return out
