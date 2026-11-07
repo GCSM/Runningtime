@@ -34,6 +34,17 @@ For duration_min of easy and long runs use distance_km x easy_pace_s_per_km_esti
 If `race_paces_per_km` is present, use it for "5K pace", "10K pace", "half-marathon pace" and "goal pace" in menu items.
 `recent_training` showing no Strava history means "unknown", not "zero": volume_plan.baseline_km is what the athlete currently runs.
 
+Hard efforts and progression (checked by code afterwards, so plan them properly):
+- A long run with a pace finish (marathon, half-marathon, tempo or progression) is a hard effort. At most two hard efforts (tempo, intervals,
+  paced long run) in any 7 days, and at least two easy days between a hard effort and the next one.
+- Threshold-pace work adds up to at most ~10% of the week's distance (12% in a marathon block) and interval-pace work to at most 8%; the rest of
+  a quality session is warm-up, jogs and cool-down.
+- Quality sessions must progress: add reps or minutes by ~10-15% across the build, step back in recovery weeks, alternate threshold and
+  interval-type stimuli, and never repeat an identical session more than twice in a row. Race-specific work grows through the peak phase.
+- Run/walk beginners: lengthen the running segments by at most 1-2 minutes (or about 25%) a week, never start continuous running and a quality
+  session in the same week, and set distance = time / the average pace *including the walks* so it matches what the session really yields.
+- Race week: short easy runs and strides, plus (if the week's km allow) one brief goal-pace touch 2-3 days before the race. Nothing hard the last two days.
+
 Coaching principles (from published plans and coaching research):
 - About 80% of running is easy: conversational, RPE 3-4 (talk test). Beginners tend to run easy days too fast; say so.
 - Base: aerobic volume, strides, hills, fartlek, consistency. Build: threshold and race-specific intervals. Peak: race-pace

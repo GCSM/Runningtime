@@ -126,6 +126,24 @@ def audit_plan(workouts: list[dict], profile: Profile, weeks: list[Week], today:
         for lg in longs:
             if DAYS[date.fromisoformat(lg["date"]).weekday()] != profile.long_run_day:
                 v.append(f"week {ws}: long run isn't on {profile.long_run_day}")
+    # --- sessions must progress, and hard efforts must not stack ---------------------------------------------------------------
+    from .plancheck import is_paced_long
+    hard = sorted([w for w in workouts if w["type"] in K.QUALITY_TYPES or is_paced_long(w)], key=lambda w: w["date"])
+    for i, w in enumerate(hard):
+        d0 = date.fromisoformat(w["date"])
+        in_window = [x for x in hard[i:] if (date.fromisoformat(x["date"]) - d0).days <= 6]
+        if len(in_window) > 2 and not any(abs((date.fromisoformat(x["date"]) - d0).days) > 6 for x in in_window[:1]):
+            v.append(f"{len(in_window)} hard efforts in 7 days starting {w['date']}")
+            break
+    chain, last = 0, None
+    for ws, items in sorted(by_week.items()):
+        q = sorted([w for w in items if w["type"] in K.QUALITY_TYPES], key=lambda w: w["date"])
+        sig = (q[0]["type"], q[0]["title"].strip().lower(), round(q[0]["distance_km"])) if q else None
+        chain = chain + 1 if sig and sig == last else (1 if sig else 0)
+        last = sig
+        if chain >= 4:
+            v.append(f"the same quality session ('{q[0]['title']}') is repeated {chain} weeks running (week {ws})")
+            break
     long_by_week = {ws: max(w["distance_km"] for w in items if w["type"] == "long") for ws, items in by_week.items() if any(w["type"] == "long" for w in items)}
     peak = max(long_by_week.values(), default=0)
     if peak > K.long_run_cap_km(profile.goal_km, profile.experience) * 1.06:

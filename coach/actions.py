@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from . import knowledge as K
+from .plancheck import retitle
 from .errors import UserError
 from .models import DAYS
 from .plancheck import mentions_pain
@@ -158,6 +159,8 @@ class ActionsMixin:
                 fields["distance_km"] = round(w["distance_km"] * factor, 1)
                 if w["duration_min"]:
                     fields["duration_min"] = int(round(w["duration_min"] * factor))
+                if "title" not in fields:
+                    fields["title"] = retitle(w["title"], w["distance_km"], fields["distance_km"])
             fields["note"] = "Eased off after a pain report"
             self.db.update_workout(w["id"], **fields)
             changed += 1
@@ -188,6 +191,8 @@ class ActionsMixin:
                 fields["distance_km"] = round(w["distance_km"] * factor * 2) / 2 if w["distance_km"] >= 4 else round(w["distance_km"] * factor, 1)
                 if w["duration_min"]:
                     fields["duration_min"] = int(round(w["duration_min"] * fields["distance_km"] / w["distance_km"]))
+                if "title" not in fields:
+                    fields["title"] = retitle(w["title"], w["distance_km"], fields["distance_km"])
                 before += w["distance_km"]
                 after += fields["distance_km"]
             fields["note"] = "Eased about 10% after low execution scores"

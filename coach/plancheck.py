@@ -44,6 +44,46 @@ def _f(v, default=None):
     return x if math.isfinite(x) else default
 
 
+_PACED = re.compile(r"\b(?:finish|finishing|progression|progressive|marathon[- ]pace|half[- ]marathon[- ]pace|hmp|mp|goal[- ]pace|tempo|threshold)\b", re.I)
+
+
+def is_paced_long(w: dict) -> bool:
+    """A long run that includes a pace finish is a hard effort, not an easy long run."""
+    return w.get("type") == "long" and bool(_PACED.search(f"{w.get('title', '')} {w.get('description', '')} {w.get('pace_guidance', '')}"))
+
+
+_KM_IN_TEXT = re.compile(r"(\d+(?:\.\d+)?)(\s*km)\b")
+
+
+def retitle(title: str, old_km: float, new_km: float) -> str:
+    """Update a distance mentioned in a title ("Easy 15 km") after the workout was shortened or lengthened; other titles are left alone."""
+    def fix(m: re.Match) -> str:
+        return f"{new_km:g}{m.group(2)}" if abs(float(m.group(1)) - old_km) <= max(0.3, 0.05 * old_km) else m.group(0)
+    return _KM_IN_TEXT.sub(fix, title)
+
+
+def _reconcile_text(clean: list[dict]) -> None:
+    """Keep what the athlete READS consistent with what we SAVED. When a distance was changed (scaled to fit the week, the day's minutes or a
+    cap), a title like "Tempo 12 km" or a session structure in the description would otherwise describe a different workout."""
+    for w in clean:
+        orig = w.pop("_orig_km", None)
+        new = w["distance_km"]
+        if not orig or abs(new - orig) <= max(0.3, 0.05 * orig) or w["type"] in ("race", "cross"):
+            continue
+        retitled = [False]
+
+        def fix(m: re.Match) -> str:
+            if abs(float(m.group(1)) - orig) <= max(0.3, 0.05 * orig):
+                retitled[0] = True
+                return f"{new:g}{m.group(2)}"
+            return m.group(0)
+
+        w["title"] = _KM_IN_TEXT.sub(fix, w["title"])
+        if w["type"] in K.QUALITY_TYPES or (w["type"] == "long" and not retitled[0]):
+            w["description"] = (w["description"] + " " if w["description"] else "") + (
+                f"(Adjusted from {orig:g} km to {new:g} km to fit your week: do fewer repeats or a shorter warm-up/cool-down, keeping the same effort.)")
+
+
 def sanitize(
     raw: list[dict],
     *,
@@ -123,7 +163,7 @@ def sanitize(
             "title": str(r.get("title") or wtype.title())[:120],
             "description": str(r.get("description") or ""),
             "distance_km": round(max(dist, 0), 1), "duration_min": int(round(max(dur, 0))),
-            "pace_guidance": str(r.get("pace_guidance") or ""),
+            "pace_guidance": str(r.get("pace_guidance") or ""), "_orig_km": round(max(dist, 0), 1),
         })
 
     # The race itself must exist.
@@ -166,6 +206,8 @@ def sanitize(
         if wk is None:
             continue
         limit = K.quality_limit(level, wk.phase, wk.recovery, run_days) - done_quality.get(date.fromisoformat(ws), 0)
+        if limit >= 2 and any(is_paced_long(w) for w in items):
+            limit -= 1                                     # a long run with a pace finish already is one of the week's hard efforts
         kept_this_week = 0
         for w in items:
             if w["type"] not in K.QUALITY_TYPES:
@@ -291,7 +333,7 @@ def sanitize(
         runs = [w for w in in_week if w["type"] != "race"]
         total = sum(w["distance_km"] for w in runs)
         room = wk.target_km * VOLUME_SLACK - race_km - done_km_by_week.get(ws, 0.0)
-        if runs and total > room:
+        if runs and total > 0 and total > room:
             # Scale to fit exactly. Only the current week keeps a floor (some of it is already behind the athlete).
             floor = 0.4 if done_km_by_week.get(ws, 0.0) > 0 or room <= 0 else 0.0
             s = max(room / total, floor)
@@ -299,5 +341,6 @@ def sanitize(
             for w in runs:
                 w["distance_km"] = round(w["distance_km"] * s, 1)
                 w["duration_min"] = int(round(w["duration_min"] * s))
+    _reconcile_text(clean)
     clean.sort(key=lambda w: w["date"])
     return clean, notes

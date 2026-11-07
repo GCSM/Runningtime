@@ -197,6 +197,33 @@ def run_capacity_km(level: str, goal_km: float, other_day_minutes: list[int], lo
     return others + long_km
 
 
+# ---- Input sanity: reject goals no plan can sensibly be built for -----------------------------------------------
+GOAL_KM_RANGE = (3.0, 42.5)           # 3 km to the marathon; ultras are a different kind of training
+RUN_DAYS_RANGE = (2, 6)               # keep at least one rest day; one day a week isn't a training plan
+FASTEST_PACE_S_KM = {"short": 150.0, "long": 170.0}      # 2:30/km up to the half, 2:50/km (a 2:00 marathon) beyond: world-record territory
+SLOWEST_PACE_S_KM = 780.0                                 # 13:00/km: slower than that is a walk, leave the goal time blank
+
+
+def validate_goal(goal_km: float, goal_time_s: int | None, run_days: int) -> None:
+    """Raise ValueError with a plain message if the goal can't be planned for. Called when the athlete saves their goal."""
+    if not (GOAL_KM_RANGE[0] <= goal_km <= GOAL_KM_RANGE[1]):
+        raise ValueError(f"choose a race between {GOAL_KM_RANGE[0]:g} km and a marathon ({GOAL_KM_RANGE[1] - 0.3:.1f} km); longer races aren't supported yet")
+    if goal_time_s:
+        pace = goal_time_s / goal_km
+        fastest = FASTEST_PACE_S_KM["long" if goal_km >= 21 else "short"]
+        if pace < fastest:
+            raise ValueError(f"a goal time of {fmt_hms(goal_time_s)} for {goal_km:g} km is faster than world-record pace; check the hours, minutes and seconds")
+        if pace > SLOWEST_PACE_S_KM:
+            raise ValueError(f"a goal time of {fmt_hms(goal_time_s)} for {goal_km:g} km is slower than a walk; leave it blank if you just want to finish")
+    if not (RUN_DAYS_RANGE[0] <= run_days <= RUN_DAYS_RANGE[1]):
+        raise ValueError(f"pick between {RUN_DAYS_RANGE[0]} and {RUN_DAYS_RANGE[1]} running days a week (keep at least one rest day)")
+
+
+def fmt_hms(s: float) -> str:
+    s = int(round(s))
+    return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
 # ---- 7. Plan length ----------------------------------------------------------------------------------------------
 MIN_WEEKS = {  # (beginner, intermediate, advanced)
     5.0: (8, 6, 4), 10.0: (10, 8, 6), 21.0975: (12, 10, 8), 42.195: (20, 16, 16),

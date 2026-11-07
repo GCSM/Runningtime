@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import auth
+from . import knowledge as K
 from .spotify import SpotifyClient, SpotifyError
 from .music import DeezerResolver, PlaylistCoach, PlaylistService
 from .chat import ChatCoach, ChatService
@@ -414,6 +415,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             )
             if p.weekly_minutes == 0:
                 raise ValueError("pick at least one day you can run, with minutes available")
+            K.validate_goal(p.goal_km, p.goal_time_s, sum(a.available for a in avail.values()))
             if not avail[p.long_run_day].available:
                 raise ValueError("your long-run day must be one of your running days")
             if p.race_date <= svc.today():

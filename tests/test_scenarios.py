@@ -316,7 +316,7 @@ def reference_plan(p, weeks, earliest, done_km_this_week=0.0):
     run_days = sum(a.available for a in p.availability.values())
     long_dates = {wk.week_start + timedelta(days=long_idx) for wk in weeks if wk.long_run_km > 0 and avail[long_idx].available
                   and wk.week_start + timedelta(days=long_idx) >= earliest}          # every long run in the plan, so spacing holds across Monday too
-    for wk in weeks:
+    for wk_idx, wk in enumerate(weeks):
         days = [(i, wk.week_start + timedelta(days=i)) for i in range(7) if avail[i].available and wk.week_start + timedelta(days=i) >= earliest]
         if wk.race_week:
             for i, d in days:
@@ -327,7 +327,7 @@ def reference_plan(p, weeks, earliest, done_km_this_week=0.0):
         target = wk.target_km - (done_km_this_week if wk.week_start == monday(earliest) else 0.0)
         long_d = next((d for i, d in days if i == long_idx), None)
         limit = K.quality_limit(p.experience, wk.phase, wk.recovery, run_days)
-        q_days, kinds = [], itertools.cycle(["tempo", "intervals"])
+        q_days, kinds = [], itertools.cycle(["tempo", "intervals"] if wk_idx % 2 == 0 else ["intervals", "tempo"])      # sessions vary and progress like a coach's would
         for i, d in days:
             if len(q_days) >= limit or i == long_idx:
                 continue
@@ -336,7 +336,7 @@ def reference_plan(p, weeks, earliest, done_km_this_week=0.0):
             if any(abs((d - x).days) < 2 for x in q_days):
                 continue
             q_days.append(d)
-        q_km = min(8.0, 0.22 * wk.target_km)
+        q_km = round(min(8.0, 0.22 * wk.target_km) * (0.7 + 0.1 * (wk_idx % 4)), 1)
         long_km = wk.long_run_km if (long_d and wk.long_run_km > 0) else 0.0
         easy_days = [d for i, d in days if d != long_d and d not in q_days]
         remaining = 0.97 * target - long_km - q_km * len(q_days)
