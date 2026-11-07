@@ -60,8 +60,9 @@ def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill
     if first_wk >= this_wk:
         return None                                   # only this (incomplete) week so far
     vals = [totals.get(this_wk - timedelta(weeks=i), 0.0) if this_wk - timedelta(weeks=i) >= first_wk else fill_km for i in range(1, weeks + 1)]
+    unknown = sum(1 for i in range(1, weeks + 1) if this_wk - timedelta(weeks=i) < first_wk)
     top = max(vals)
-    if weeks >= 4 and top > 0 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
+    if weeks >= 4 and unknown == 0 and top > 0 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
         vals = sorted(vals, reverse=True)[:2]         # the two best weeks represent current capability; one step-back week doesn't count against it
     return sum(vals) / len(vals)
 

@@ -130,9 +130,10 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         est = F.estimate(acts, today)
         if est:
             ga = F.goal_assessment(est["vdot"], p.goal_km, p.goal_time_s)
-            if ga and ga["gap_pct"] < -6:
-                out.append(f"Your goal of {ga['goal']} is well beyond what your recent runs support (they point to about {ga['predicted']} for the {K.goal_name(p.goal_km)} today). "
-                           f"The plan's paces follow your goal; a goal closer to {ga['predicted']} would be a safer target, and you can raise it as you improve.")
+            if ga and ga["gap_pct"] < -20:         # (recent runs are mostly easy and understate fitness, so only a very large gap is worth a warning)
+                out.append(f"Your goal of {ga['goal']} is well beyond what your recent runs support (they point to about {ga['predicted']} for the {K.goal_name(p.goal_km)} today; "
+                           f"mostly-easy running understates fitness, so ignore this if you've raced recently). The plan's paces follow your goal; "
+                           f"a goal closer to {ga['predicted']} would be a safer target, and you can raise it as you improve.")
         easy_est = adherence.easy_pace_s_km(acts, today)
         goal_easy = sum(paces["easy"]) / 2
         if easy_est and easy_est > goal_easy * 1.15:

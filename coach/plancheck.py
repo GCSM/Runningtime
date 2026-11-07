@@ -142,6 +142,7 @@ def sanitize(
             dist = dur * 60 / pace_s_km if wtype != "cross" else 0.0
         if dur is None and dist is not None:
             dur = dist * pace_s_km / 60
+        model_km = dist                                        # what the model asked for, before any correction (titles/descriptions are reconciled to it)
         if is_race:
             # The race is the goal distance, whatever the model wrote (a wrong figure would also distort race week's volume).
             dist = profile.goal_km
@@ -163,7 +164,7 @@ def sanitize(
             "title": str(r.get("title") or wtype.title())[:120],
             "description": str(r.get("description") or ""),
             "distance_km": round(max(dist, 0), 1), "duration_min": int(round(max(dur, 0))),
-            "pace_guidance": str(r.get("pace_guidance") or ""), "_orig_km": round(max(dist, 0), 1),
+            "pace_guidance": str(r.get("pace_guidance") or ""), "_orig_km": round(max(model_km or 0.0, 0), 1),
         })
 
     # The race itself must exist.
