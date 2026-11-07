@@ -192,6 +192,33 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             ctx["layoff"] = {"days_since_last_run": days_off, "suggested_restart_share_of_previous_volume": K.restart_fraction(days_off)}
         return ctx
 
+    def plan_gaps(self) -> list[str]:
+        """Upcoming weeks (before race week) with no workouts at all: a plan damaged by an earlier partial answer. Used to offer a rebuild."""
+        today = self.today()
+        have = {w["week_start"] for w in self.db.get_workouts(monday(today))}
+        p = self.db.get_profile()
+        if not p or not have:
+            return []
+        return [w["week_start"] for w in self.db.get_weeks() if w["week_start"] >= monday(today).isoformat() and w["week_start"] not in have]
+
+    def _coverage_gaps(self, p: Profile, inp: PlanInputs, workouts: list[dict]) -> list[str]:
+        """Week starts (ISO) that should have workouts but have too few: every week through race day needs at least two runs
+        (one in race week, where race day counts; fewer if the athlete has fewer days left this week)."""
+        today = self.today()
+        have: dict[str, int] = {}
+        for w in workouts:
+            have[w["week_start"]] = have.get(w["week_start"], 0) + 1
+        gaps = []
+        for wk in inp.weeks:
+            if wk.week_start < monday(today):
+                continue
+            days = [wk.week_start + timedelta(days=i) for i in range(7)]
+            runnable = sum(1 for d in days if d >= today and p.availability[DAYS[d.weekday()]].available)
+            need = 1 if wk.race_week else min(2, runnable)
+            if need and have.get(wk.week_start.isoformat(), 0) < need:
+                gaps.append(wk.week_start.isoformat())
+        return gaps
+
     def _run_coach(self, p: Profile, inp: PlanInputs, acts: list[dict], ctx: dict, mode: str, note: str = "") -> tuple[list[dict], str]:
         today = self.today()
         totals = adherence.weekly_km(acts)
@@ -205,12 +232,29 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         )
         out = self.coach.plan(ctx, mode=mode)
         workouts, notes = sanitize(out["workouts"], **kwargs)
-        if notes and len(notes) > max(2, FIX_RETRY_RATIO * len(out["workouts"])):
-            out = self.coach.plan(ctx, mode=mode, feedback=notes)
+        gaps = self._coverage_gaps(p, inp, workouts)
+        if gaps or (notes and len(notes) > max(2, FIX_RETRY_RATIO * len(out["workouts"]))):
+            feedback = list(notes)
+            if gaps:
+                feedback.insert(0, f"Your plan had no workouts for the weeks starting {', '.join(gaps[:8])}{' and more' if len(gaps) > 8 else ''}. "
+                                   "Cover every week from earliest_workout_date through race day.")
+            out = self.coach.plan(ctx, mode=mode, feedback=feedback)
             workouts, notes = sanitize(out["workouts"], **kwargs)
+            gaps = self._coverage_gaps(p, inp, workouts)
         if not workouts:
             raise UserError("The coach returned no usable workouts. Check your availability and try again.")
-        self.db.replace_plan_from(self.today(), [w.to_row() for w in inp.weeks if w.week_start >= monday(today)], workouts)
+        keep: set[str] = set()
+        if gaps:
+            # A partial answer must never wipe the plan: keep the existing workouts for weeks the coach didn't cover, and refuse outright
+            # if there is nothing to keep (a hollow plan with empty weeks is worse than an error).
+            existing = {w["week_start"] for w in self.db.get_workouts(today) if w["status"] == "planned"}
+            if mode == "generate" or not set(gaps) <= existing:
+                raise UserError(f"The coach only returned part of the plan (nothing for the weeks starting {', '.join(gaps[:4])}"
+                                f"{' and more' if len(gaps) > 4 else ''}). Nothing was changed. Please try again.")
+            keep = set(gaps)
+            self.db.log("review", f"The coach re-planned only part of the plan; the weeks starting {', '.join(gaps[:6])} were kept as they were.")
+        workouts = [w for w in workouts if w["week_start"] not in keep]       # a week we keep is kept whole, never a mix of old and new
+        self.db.replace_plan_from(self.today(), [w.to_row() for w in inp.weeks if w.week_start >= monday(today)], workouts, keep_weeks=keep)
         self.refresh_statuses()
         text = inp.outlook.athlete_text(K.goal_name(p.goal_km), p.experience)
         self.db.kv_set("volume_outlook", {**inp.outlook.to_dict(), "text": text, "level": p.experience,
@@ -404,6 +448,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         for _w in by_date.values():
             _w["execution"] = self.execution_for(_w) if _w["status"] in ("completed", "partial") else None
         data["ease_suggestion"] = self.ease_suggestion()
+        data["plan_gaps"] = self.plan_gaps()
         data["today_workout"] = by_date.get(today.isoformat())
         data["week_workouts"] = list(by_date.values())
         week = {w["week_start"]: w for w in self.db.get_weeks()}.get(ws.isoformat())

@@ -227,13 +227,15 @@ class DB:
         return date.fromisoformat(r["d"]) if r and r["d"] else None
 
     # ---- plan ------------------------------------------------------------
-    def replace_plan_from(self, from_date: date, weeks: list[dict], workouts: list[dict]) -> None:
-        """Replace all not-yet-done workouts on/after from_date, and week targets from that week on."""
+    def replace_plan_from(self, from_date: date, weeks: list[dict], workouts: list[dict], keep_weeks: frozenset | set = frozenset()) -> None:
+        """Replace all not-yet-done workouts on/after from_date, and week targets from that week on.
+        Weeks in keep_weeks (ISO week starts) keep their existing planned workouts: the new plan didn't cover them."""
         from .skeleton import monday
 
         wk = monday(from_date).isoformat()
         with self.conn() as c:
-            c.execute("delete from workouts where user_id=? and date>=? and status='planned'", (self.uid, from_date.isoformat()))
+            c.execute("delete from workouts where user_id=? and date>=? and status='planned'" + (f" and week_start not in ({','.join('?' * len(keep_weeks))})" if keep_weeks else ""),
+                      (self.uid, from_date.isoformat(), *sorted(keep_weeks)))
             c.execute("delete from weeks where user_id=? and week_start>=?", (self.uid, wk))
             for w in weeks:
                 c.execute(

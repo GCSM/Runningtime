@@ -39,6 +39,14 @@
   <a class="btn sec sm" href="/setup" style="display:flex;align-items:center;justify-content:center;margin-top:14px">Adjust goal &amp; schedule</a>
 </section>
 {% endif %}
+{% if d.plan_gaps %}
+<section class="card rise" role="alert" style="border:2px solid var(--bad)">
+  <h2 style="color:var(--bad)">Part of your plan is empty</h2>
+  <p class="sm" style="margin-top:8px">{{ d.plan_gaps|length }} upcoming week{{ '' if d.plan_gaps|length == 1 else 's' }} (from {{ d.plan_gaps[0]|fmt_date('%b %-d') }}) {{ 'has' if d.plan_gaps|length == 1 else 'have' }} no runs. That can happen if an update was interrupted. Rebuild them now and nothing you've already done is touched.</p>
+  <form method="post" action="/review" data-job class="stack" style="margin-top:12px"><input type="hidden" name="note" value="Some upcoming weeks of my plan were empty. Please rebuild every week through race day.">
+    <button>Rebuild my plan</button></form>
+</section>
+{% endif %}
 {% if d.ease_suggestion %}{% set es = d.ease_suggestion %}
 <section class="card rise" role="region" aria-label="Plan suggestion" style="border:2px solid var(--hl)">
   <h2>Make the next two weeks a bit easier?</h2>
