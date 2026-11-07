@@ -12,6 +12,7 @@
   <div class="plbar" aria-hidden="true">{% for sg in pl.segments %}<i class="e{{ sg.energy }}" style="flex:{{ sg.seconds }}" title="{{ sg.name }}"></i>{% endfor %}</div>
   <div class="plkey xs mut">{% for sg in pl.segments %}<span>{{ sg.name }} · {{ (sg.seconds / 60)|round|int }}m</span>{% endfor %}</div>
   {% if pl.stale %}<p class="sm" style="margin-top:12px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--warn) 16%,transparent)">This run changed since the playlist was built. Rebuild it to match.</p>{% endif %}
+  {% if pl.note %}<p class="xs" style="margin-top:10px">{{ pl.note }}</p>{% endif %}
   {% if pl.verified < pl.count %}<p class="xs mut" style="margin-top:10px">{{ pl.verified }} of {{ pl.count }} song lengths confirmed from a music catalogue; the rest are estimates, so the total can be a little off.</p>{% endif %}
 </section>
 
@@ -27,11 +28,19 @@
 {% endfor %}
 
 <section class="card rise">
-  <div class="row" style="gap:10px">
-    <button type="button" class="grow" id="copy-pl" data-text="{{ pl.text }}">Copy song list</button>
+  {% if pl.spotify %}
+  <a class="btn" href="{{ pl.spotify.url }}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center">Open in Spotify</a>
+  <p class="xs mut" style="margin-top:10px">Saved as a private playlist{% if pl.spotify.missing %}. Not found on Spotify, so left out: {{ pl.spotify.missing|join(', ') }}{% endif %}.</p>
+  {% elif sp and sp.connected and not pl.stale %}
+  <form method="post" action="/workout/{{ w.id }}/playlist/save" data-job><button style="width:100%">Save to Spotify</button></form>
+  {% elif sp and sp.configured and not sp.connected %}
+  <a class="btn" href="/spotify/connect?next=/workout/{{ w.id }}/playlist" style="display:flex;align-items:center;justify-content:center">Connect Spotify to save this</a>
+  {% endif %}
+  <div class="row" style="gap:10px;margin-top:{{ '12px' if (pl.spotify or (sp and sp.configured and not pl.stale)) else '0' }}">
+    <button type="button" class="sec grow" id="copy-pl" data-text="{{ pl.text }}">Copy song list</button>
     <form method="post" action="/workout/{{ w.id }}/playlist" data-job class="grow"><button class="sec" style="width:100%">Rebuild</button></form>
   </div>
-  <p class="xs mut" style="margin-top:10px">Tap a song to find it in Spotify. To make a playlist: in Spotify create a new playlist, then add the songs in this order. (Spotify doesn't let this app create playlists on a home network.)</p>
+  <p class="xs mut" style="margin-top:10px">Tap a song to find it in Spotify.{% if not (sp and sp.connected) %} Or create a playlist in Spotify and add the songs in this order.{% endif %}</p>
 </section>
 {% else %}
 <section class="card empty rise">

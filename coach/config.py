@@ -13,6 +13,9 @@ class Settings:
     effort: str = "medium"
     chat_model: str = "claude-haiku-5-5"      # the cheapest current model: chat needs speed and low cost, not deep planning
     chat_effort: str = "low"
+    spotify_client_id: str = ""                # one Spotify app for the whole server (PKCE: no client secret needed)
+    spotify_redirect_uri: str = "http://127.0.0.1:8888/callback"
+    spotify_user_limit: int = 5                # Spotify developer-mode apps allow 5 authorized users
     playlist_daily_limit: int = 10             # playlists built per user per rolling 24 hours
     chat_daily_limit: int = 40                 # messages per user per rolling 24 hours (bounds the cost)
     strava_client_id: str = ""
@@ -35,6 +38,9 @@ class Settings:
             chat_model=e("COACH_CHAT_MODEL", "claude-haiku-5-5"),
             chat_effort=e("COACH_CHAT_EFFORT", "low"),
             chat_daily_limit=int(e("CHAT_MESSAGES_PER_DAY", "40") or 40),
+            spotify_client_id=e("SPOTIFY_CLIENT_ID", "").strip(),
+            spotify_redirect_uri=e("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback").strip() or "http://127.0.0.1:8888/callback",
+            spotify_user_limit=int(e("SPOTIFY_USER_LIMIT", "5") or 5),
             playlist_daily_limit=int(e("PLAYLISTS_PER_DAY", "10") or 10),
             strava_client_id=e("STRAVA_CLIENT_ID", ""),
             strava_client_secret=e("STRAVA_CLIENT_SECRET", ""),

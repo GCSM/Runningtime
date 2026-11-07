@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import auth
+from .spotify import SpotifyClient, SpotifyError
 from .music import DeezerResolver, PlaylistCoach, PlaylistService
 from .chat import ChatCoach, ChatService
 from .config import Settings
@@ -61,7 +62,7 @@ def goal_seconds(f) -> int | None:
     return parse_hms(str(f.get("goal_time", "")))
 
 
-def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None) -> FastAPI:
+def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None, spotify_factory=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
     coach = coach or Coach(settings.model, effort=settings.effort)
@@ -69,6 +70,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
     playlist_llm = playlist or PlaylistCoach(settings.chat_model, settings.chat_effort)
     song_lookup = resolver or DeezerResolver()
     strava_factory = strava_factory or (lambda udb: StravaClient(settings, udb))
+    spotify_factory = spotify_factory or (lambda udb: SpotifyClient(settings, udb))
 
     def service_for(uid: int) -> CoachService:
         udb = db.for_user(uid)
@@ -376,7 +378,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         return render(request, "me.html", d=d, p=p, units=p.units if p else "km", settings=settings,
                       cal_url=feed, cal_webcal=("webcal://" + feed.split("://", 1)[1]) if feed else None,
                       callback_host=host, callback_is_ip=is_ip, callback_url=f"{base}/strava/callback",
-                      strava_used=used, strava_full=full)
+                      strava_used=used, strava_full=full, sp=spotify_factory(svc.db), sp_used=spotify_slots_used())
 
     @app.get("/setup")
     def setup(request: Request):
@@ -531,7 +533,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
 
     # ---- run playlists (no Spotify account needed) -----------------------------------------------------------
     def music_for(request: Request) -> PlaylistService:
-        return PlaylistService(request.state.svc, playlist_llm, song_lookup, settings.playlist_daily_limit)
+        return PlaylistService(request.state.svc, playlist_llm, song_lookup, settings.playlist_daily_limit, spotify_factory(request.state.svc.db))
 
     @app.get("/workout/{wid}/playlist")
     def playlist_page(request: Request, wid: int):
@@ -541,7 +543,7 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back("/plan", err="That workout wasn't found.")
         p = ms.db.get_profile()
         return render(request, "playlist.html", w=w, pl=ms.get(wid), units=p.units if p else "km", prefs=ms.prefs(),
-                      left=max(0, ms.limit - ms.used_today()))
+                      left=max(0, ms.limit - ms.used_today()), sp=ms.spotify)
 
     @app.post("/workout/{wid}/playlist")
     def playlist_build(request: Request, wid: int):
@@ -550,6 +552,42 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
             return back("/plan", err="That workout wasn't found.")
         job = start_job(uid, "playlist", "Building your playlist", lambda: ms.generate(wid), "Your playlist is ready.")
         return job_response(request, uid, job, f"/workout/{wid}/playlist")
+
+    @app.post("/workout/{wid}/playlist/save")
+    def playlist_save(request: Request, wid: int):
+        uid, ms = request.state.user["id"], music_for(request)
+        job = start_job(uid, "spotify", "Saving to Spotify", lambda: ms.save_to_spotify(wid), "Saved to your Spotify.")
+        return job_response(request, uid, job, f"/workout/{wid}/playlist")
+
+    # ---- spotify connect (paste-the-address flow; Spotify can't redirect to a plain-HTTP server) -------------
+    def spotify_slots_used() -> int:
+        return len(db.user_ids_with_kv_key("spotify_token"))
+
+    @app.get("/spotify/connect")
+    def spotify_connect(request: Request, next: str = ""):
+        sp = spotify_factory(request.state.svc.db)
+        if not sp.configured:
+            return back("/me", err="Spotify isn't set up on this server yet. Ask whoever runs it to add the Spotify app.")
+        if not sp.connected and spotify_slots_used() >= settings.spotify_user_limit:
+            return back("/me", err=f"This server's Spotify app is full ({spotify_slots_used()} of {settings.spotify_user_limit} accounts connected). Ask the person who runs it to free a slot.")
+        url = sp.begin()
+        request.state.svc.db.kv_set("spotify_next", safe_next(next, "/me"))
+        return render(request, "spotify_connect.html", auth_url=url, redirect_uri=settings.spotify_redirect_uri)
+
+    @app.post("/spotify/finish")
+    def spotify_finish(request: Request, pasted: str = Form("")):
+        sp = spotify_factory(request.state.svc.db)
+        nxt = request.state.svc.db.kv_get("spotify_next") or "/me"
+        try:
+            name = sp.finish(pasted)
+        except SpotifyError as e:
+            return back("/me", err=str(e))
+        return back(nxt, f"Spotify connected as {name}.")
+
+    @app.post("/spotify/disconnect")
+    def spotify_disconnect(request: Request):
+        spotify_factory(request.state.svc.db).disconnect()
+        return back("/me", "Spotify disconnected. To fully revoke access, remove RunningTime in your Spotify account's Apps settings.")
 
     @app.post("/music/prefs")
     def music_prefs(request: Request, likes: str = Form(""), favourites: str = Form(""), clean_only: str = Form(""), next: str = Form("/me")):

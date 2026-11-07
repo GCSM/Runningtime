@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% block body %}
+<div class="kick rise"><a href="/me" style="color:inherit">← Me</a></div>
+<h1 class="lt rise">Connect Spotify</h1>
+<p class="sub rise">Two quick steps. Spotify can’t send you straight back to this app on a home network, so you’ll copy one address across.</p>
+
+<section class="card rise">
+  <h2>1. Approve access</h2>
+  <p class="sm" style="margin:8px 0 14px">RunningTime will only be able to create private playlists in your account. It can’t see your library or listening history.</p>
+  <a class="btn" href="{{ auth_url }}" rel="noopener" style="display:flex;align-items:center;justify-content:center">Open Spotify</a>
+  <p class="sm mut" style="margin-top:14px">After you tap <b>Agree</b>, the next page will say it can’t be reached (the address starts with <code>{{ redirect_uri.split('?')[0] }}</code>). That’s expected.</p>
+</section>
+
+<section class="card rise">
+  <h2>2. Paste the address</h2>
+  <p class="sm" style="margin:8px 0 14px">On that page, tap the address bar and copy the whole address, then come back to this page and paste it here.</p>
+  <form method="post" action="/spotify/finish" class="stack">
+    <label class="f"><span class="lab">Address from the browser</span>
+      <textarea name="pasted" rows="3" required autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="{{ redirect_uri }}?code=…"></textarea></label>
+    <button>Finish connecting</button>
+  </form>
+  <p class="xs mut" style="margin-top:10px">The address holds a one-time code that only this server can use. It expires in 15 minutes.</p>
+</section>
+{% endblock %}

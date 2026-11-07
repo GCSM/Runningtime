@@ -274,3 +274,16 @@ def test_chat_settings_are_validated_and_saved(box):
     assert val(box, "CHAT_MESSAGES_PER_DAY") is None
     r = run(box, "CHAT_MESSAGES_PER_DAY=25", "COACH_CHAT_MODEL=claude-haiku-5-5")
     assert r.returncode == 0 and val(box, "CHAT_MESSAGES_PER_DAY") == "25" and val(box, "COACH_CHAT_MODEL") == "claude-haiku-5-5"
+
+
+def test_playlist_and_spotify_settings_are_validated_and_saved(box):
+    for bad in ("PLAYLISTS_PER_DAY=0", "PLAYLISTS_PER_DAY=lots", "SPOTIFY_USER_LIMIT=-1", "SPOTIFY_CLIENT_ID=not a real id!",
+                "SPOTIFY_CLIENT_ID=short", "SPOTIFY_REDIRECT_URI=http://192.168.1.20/callback", "SPOTIFY_REDIRECT_URI=http://localhost:8888/callback",
+                "SPOTIFY_REDIRECT_URI=http://coach.lan/spotify/callback"):
+        assert run(box, bad).returncode != 0, bad
+    assert val(box, "SPOTIFY_CLIENT_ID") in (None, "") and val(box, "PLAYLISTS_PER_DAY") in (None, "10")
+    cid = "a" * 32
+    for ok_uri in ("http://127.0.0.1:8888/callback", "http://127.0.0.1/callback", "https://coach.example.com/spotify/callback"):
+        r = run(box, f"SPOTIFY_CLIENT_ID={cid}", f"SPOTIFY_REDIRECT_URI={ok_uri}", "SPOTIFY_USER_LIMIT=5", "PLAYLISTS_PER_DAY=6")
+        assert r.returncode == 0 and val(box, "SPOTIFY_REDIRECT_URI") == ok_uri and val(box, "SPOTIFY_CLIENT_ID") == cid and val(box, "PLAYLISTS_PER_DAY") == "6", ok_uri
+    assert run(box, "SPOTIFY_CLIENT_ID=").returncode == 0 and val(box, "SPOTIFY_CLIENT_ID") in (None, "")       # blank turns it off

@@ -159,6 +159,10 @@ class DB:
         with self.conn() as c:
             return [dict(r) for r in c.execute("select from_user, to_user, emoji from kudos where week_start=?", (week_start,))]
 
+    def user_ids_with_kv_key(self, key: str) -> list[int]:
+        with self.conn() as c:
+            return [r["user_id"] for r in c.execute("select user_id from kv where key=? order by user_id", (key,))]
+
     def strava_user_ids(self) -> list[int]:
         with self.conn() as c:
             return [r["user_id"] for r in c.execute("select user_id from kv where key='strava_token'")]

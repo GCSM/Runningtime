@@ -123,15 +123,29 @@ Open any upcoming run → **🎧 Run playlist**. The app builds a song list whos
 follows its shape: a chill warm-up, songs that build toward the hard part (energy 5 for intervals), and a cool-down that
 winds back down. Add your genres, artists and favourite songs under "Your music taste".
 
-How it works, and why there's no "Connect Spotify" button:
-- Spotify only accepts `https://` redirect URLs (or 127.0.0.1), so a plain-HTTP home server can't complete its login, and Spotify
-  no longer gives new apps tempo or energy data. (Dev-mode apps are also limited to 5 users and need Premium.)
-- The run's shape is plain code (`coach/runshape.py`). The cheapest model (`COACH_CHAT_MODEL`) suggests real songs per segment
-  from your taste. Each song's real length is looked up in Deezer's public catalogue (no account); lengths it can't confirm
-  stay as estimates and the page says so. Plain code then picks songs to hit the total (usually within 30 seconds).
-- Songs link to Spotify search; "Copy song list" gives you the order to paste into a playlist you make yourself.
-- Only your taste notes and the run's segments go to the model, never your name, email or plan. Capped by `PLAYLISTS_PER_DAY` (default 10).
-- Not tested against the live Anthropic or Deezer services (tests use fakes), so check one real playlist after deploying.
+How it works:
+- The run's shape is plain code (`coach/runshape.py`). The cheapest model (`COACH_CHAT_MODEL`) suggests real songs per segment from your
+  taste. Plain code then picks songs so the total matches the run (usually within 30 seconds).
+- **Without Spotify connected**: each song's length comes from Deezer's public catalogue (no account); lengths it can't confirm stay
+  estimates and the page says so. You get Spotify search links and a "Copy song list".
+- **With Spotify connected**: songs are matched on Spotify itself (exact length and track URI, songs Spotify can't find are dropped) and
+  **Save to Spotify** creates a private playlist in the user's account, then **Open in Spotify**.
+- Only taste notes and the run's segments go to the model, never your name, email or plan. Capped by `PLAYLISTS_PER_DAY` (default 10).
+
+#### Setting up Spotify (optional, one app for the whole server)
+
+1. At <https://developer.spotify.com/dashboard> create an app. Tick **Web API**. Add the redirect URI **`http://127.0.0.1:8888/callback`**
+   exactly (Spotify rejects plain-HTTP LAN addresses and `localhost`; only `https://` or a `127.0.0.1` address is accepted).
+2. In the app's **Settings → User Management**, add each person's Spotify name and email. Spotify's developer mode needs the app owner to
+   have **Premium** and allows **5 users**; anyone not listed gets a 403. (`SPOTIFY_USER_LIMIT`, default 5, enforces the cap here too.)
+3. `sudo bash deploy/reconfigure.sh SPOTIFY_CLIENT_ID=<your client id>` (no client secret is needed: the login uses PKCE).
+4. Each user: Me → **Connect Spotify** → Open Spotify → Agree. Spotify then sends the browser to a `127.0.0.1` page that won't load
+   (expected: the server isn't on their phone). They copy that page's address, paste it back into the app, and tap **Finish connecting**.
+   The address holds a one-time code that is useless without a secret the server keeps, and it expires in 15 minutes.
+
+Caveats: written from Spotify's docs and developer reports, **not tested against the live service**. Spotify renamed playlist endpoints in
+Feb 2026 (`POST /me/playlists`, `POST /playlists/{id}/items`; the app falls back to the old ones on a 404) and some developers report 403s
+creating playlists in developer mode. A 403 shows a message listing the usual causes. If it persists, copy-the-list still works.
 
 ## Develop
 ```bash

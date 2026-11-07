@@ -13,12 +13,13 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
 import httpx
 
 from .errors import CoachUnavailable, UserError
+from .spotify import SpotifyError
 from .runshape import ENERGY_NAME, Segment, segments_for
 
 MAX_TOKENS = 4000
@@ -66,6 +67,7 @@ class Track:
     seconds: int
     bpm: int
     verified: bool = False
+    uri: str = ""                         # spotify:track:... once matched on Spotify
 
     @property
     def key(self) -> str:
@@ -247,9 +249,9 @@ def signature(w: dict) -> list:
 
 
 class PlaylistService:
-    def __init__(self, svc, llm: PlaylistCoach, resolver: DeezerResolver | None = None, daily_limit: int = 10):
+    def __init__(self, svc, llm: PlaylistCoach, resolver: DeezerResolver | None = None, daily_limit: int = 10, spotify=None):
         self.svc, self.db, self.llm, self.limit = svc, svc.db, llm, daily_limit
-        self.resolver = resolver
+        self.resolver, self.spotify = resolver, spotify
 
     # ---- taste -------------------------------------------------------------------------------------------
     def prefs(self) -> dict:
@@ -272,6 +274,67 @@ class PlaylistService:
         cut = datetime.now(timezone.utc) - timedelta(hours=24)
         log = [t for t in self.db.kv_get("playlist_log", []) if datetime.fromisoformat(t) > cut]
         self.db.kv_set("playlist_log", log + [datetime.now(timezone.utc).isoformat(timespec="seconds")])
+
+    # ---- looking songs up ---------------------------------------------------------------------------------
+    def _resolve(self, pools: list[list[Track]]) -> tuple[list[list[Track]], str]:
+        """Real lengths for every song. With Spotify connected, songs are matched on Spotify itself (exact length and the URI needed to
+        add them to a playlist) and songs Spotify can't find are dropped. Otherwise (or if Spotify fails) Deezer gives lengths."""
+        if self.spotify is not None and self.spotify.connected:
+            try:
+                out = []
+                for pool in pools:
+                    kept = []
+                    for t in pool:
+                        m = self.spotify.search_track(t.artist, t.title)
+                        if m:
+                            t.seconds, t.verified, t.uri = m["seconds"], True, m["uri"]
+                            kept.append(t)
+                    out.append(kept)
+                return out, ""
+            except SpotifyError as e:
+                note = f"Couldn't use Spotify this time ({e}); lengths come from a general catalogue instead."
+        else:
+            note = ""
+        res = self.resolver or DeezerResolver()
+        for pool in pools:
+            for t in pool:
+                real = res.lookup(t.artist, t.title)
+                if real:
+                    t.seconds, t.verified = real, True
+        return pools, note
+
+    # ---- save to Spotify ---------------------------------------------------------------------------------
+    def save_to_spotify(self, workout_id: int) -> dict:
+        if self.spotify is None or not self.spotify.configured:
+            raise UserError("Spotify isn't set up on this server yet.")
+        if not self.spotify.connected:
+            raise UserError("Connect Spotify first.")
+        w, pl = self.db.get_workout(workout_id), self.db.get_playlist(workout_id)
+        if not w or not pl:
+            raise UserError("Build the playlist first.")
+        if pl.get("stale") or pl.get("signature") != signature(w):
+            raise UserError("This run changed since the playlist was built. Rebuild it first.")
+        if pl.get("spotify"):
+            return pl["spotify"]
+        tracks = [t for sg in pl["segments"] for t in sg["tracks"]]
+        missing = []
+        try:
+            for t in tracks:
+                if not t.get("uri"):
+                    m = self.spotify.search_track(t["artist"], t["title"])
+                    if m:
+                        t["uri"] = m["uri"]
+                    else:
+                        missing.append(f"{t['artist']} – {t['title']}")
+            uris = [t["uri"] for t in tracks if t.get("uri")]
+            day = date.fromisoformat(w["date"]).strftime("%a %b %-d")
+            made = self.spotify.create_playlist(f"RunningTime · {w['title']} · {day}",
+                                                f"{w['title']} on {day}: {pl['total_s'] // 60} min of music for a {pl['target_s'] // 60}-minute run. Built by RunningTime.", uris)
+        except SpotifyError as e:
+            raise UserError(str(e)) from e
+        pl["spotify"] = {**made, "missing": missing, "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        self.db.save_playlist(workout_id, pl)
+        return pl["spotify"]
 
     # ---- build -------------------------------------------------------------------------------------------
     def _easy_pace(self) -> float:
@@ -298,25 +361,23 @@ class PlaylistService:
         pools = self.llm.suggest(segs, self.prefs())
         if not any(pools):
             raise UserError("The music assistant didn't come up with any songs. Please try again.")
-        res = self.resolver or DeezerResolver()
-        for pool in pools:
-            for t in pool:
-                real = res.lookup(t.artist, t.title)
-                if real:
-                    t.seconds, t.verified = real, True
+        pools, note = self._resolve(pools)
+        if not any(pools):
+            raise UserError("None of the suggested songs could be found on Spotify. Try different taste notes.")
         chosen, err = fit(segs, pools)
         out_segs, clock = [], 0
         for seg, tracks in zip(segs, chosen):
             items = []
             for t in tracks:
                 items.append({"artist": t.artist, "title": t.title, "seconds": t.seconds, "bpm": t.bpm, "verified": t.verified,
-                              "start_s": clock, "link": spotify_link(t)})
+                              "start_s": clock, "link": spotify_link(t), "uri": t.uri})
                 clock += t.seconds
             out_segs.append({**seg.to_dict(), "tracks": items})
         all_tracks = [t for s in out_segs for t in s["tracks"]]
         pl = {"workout_id": workout_id, "signature": signature(w), "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
               "target_s": sum(s.seconds for s in segs), "total_s": clock, "error_s": err, "segments": out_segs,
-              "count": len(all_tracks), "verified": sum(1 for t in all_tracks if t["verified"]),
+              "count": len(all_tracks), "verified": sum(1 for t in all_tracks if t["verified"]), "note": note,
+              "matched_on_spotify": bool(all_tracks) and all(t["uri"] for t in all_tracks),
               "text": "\n".join(f"{t['artist']} – {t['title']}" for t in all_tracks)}
         self.db.save_playlist(workout_id, pl)
         self._count()

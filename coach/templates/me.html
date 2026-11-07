@@ -52,6 +52,19 @@ function show(){var seg=document.getElementById("theme-seg");if(!seg)return;var 
 document.addEventListener("click",function(e){var b=e.target.closest("#theme-seg button");if(!b)return;var t=b.dataset.t;try{if(t==="auto")localStorage.removeItem("theme");else localStorage.setItem("theme",t)}catch(x){}
 if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);show()});show()})();</script>
 
+<section class="card"><h2>Spotify</h2>
+{% if sp.connected %}
+  <p class="sm" style="margin-bottom:12px">Connected as <b>{{ sp.account_name() or 'your account' }}</b>. “Save to Spotify” on any run playlist creates a private playlist for you.</p>
+  <form method="post" action="/spotify/disconnect"><button class="danger sm" style="width:100%">Disconnect Spotify</button></form>
+{% elif sp.configured %}
+  <p class="sm mut" style="margin-bottom:12px">Save run playlists straight into your Spotify account. You’ll approve once and copy one address back here.</p>
+  <a class="btn sec" href="/spotify/connect" style="display:flex;align-items:center;justify-content:center">Connect Spotify</a>
+  <p class="xs mut" style="margin-top:10px">{{ sp_used }} of {{ settings.spotify_user_limit }} accounts connected on this server. Your Spotify email must be added to the app’s user list by whoever runs it.</p>
+{% else %}
+  <p class="sm mut">Spotify isn’t set up on this server yet, so playlists come as a song list you can copy. Whoever runs the server can add a Spotify app (see the README).</p>
+{% endif %}
+</section>
+
 <section class="card"><h2>Crew</h2>
   <p class="sm mut" style="margin-bottom:12px">Run alongside friends on this server. Opt in to share only your first name, this week's distance and run count, streak and race countdown. Never routes, paces or heart rate.</p>
   <a class="btn sec" href="/crew" style="display:flex;align-items:center;justify-content:center">Open crew</a>
