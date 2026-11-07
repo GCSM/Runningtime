@@ -126,8 +126,19 @@ class CoachService(ActionsMixin, ProgressMixin):
             plan_start=plan_start, today=today, race_date=p.race_date, goal_km=p.goal_km, baseline_km=base_km,
             experience=p.experience, weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes,
             easy_pace_s_km=pace, run_days=run_days, baseline_source=source,
+            longest_recent_km=max((a["distance_m"] / 1000 for a in acts if a["date"] >= (today - timedelta(days=28)).isoformat()), default=0.0),
         )
         return PlanInputs(weeks, pace, outlook, paces, basis, run_days)
+
+    @staticmethod
+    def _race_paces(p: Profile) -> dict[str, str] | None:
+        """Pace for each race distance implied by the goal time (Daniels VDOT), so "10K pace" or "goal pace" in a session is a number from code."""
+        if not p.goal_time_s:
+            return None
+        v = K.vdot(p.goal_km * 1000, p.goal_time_s)
+        out = {name: K.fmt_pace(K.race_time_s(v, m) / (m / 1000)) for name, m in (("5k", 5000.0), ("10k", 10000.0), ("half_marathon", 21097.5), ("marathon", 42195.0))}
+        out["goal"] = K.fmt_pace(p.goal_time_s / p.goal_km)
+        return out
 
     def _context(self, p: Profile, inp: PlanInputs, acts: list[dict], plan_start: date, note: str = "") -> dict:
         today = self.today()
@@ -165,6 +176,7 @@ class CoachService(ActionsMixin, ProgressMixin):
                            "the starting point was determined. Do not under-deliver the weekly target_km.",
             },
             "training_paces_per_km": inp.paces,
+            "race_paces_per_km": self._race_paces(p),
             "training_paces_basis": inp.paces_basis,
             "workout_menu_by_phase": {ph: menu[ph] for ph in menu if ph in phases},
             "injury_or_pain_mentioned_in_check_in": mentions_pain(note),

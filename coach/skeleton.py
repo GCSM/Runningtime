@@ -56,6 +56,7 @@ def build_skeleton_info(
     easy_pace_s_km: float | None,
     run_days: int = 4,
     baseline_source: str = "stated",
+    longest_recent_km: float = 0.0,
 ) -> tuple[list[Week], VolumeOutlook]:
     """Weeks from monday(today) to the race week, plus a description of the volume plan. Phases are positioned over the
     whole plan (plan_start..race); the ramp starts from `baseline_km` at the current week."""
@@ -74,8 +75,18 @@ def build_skeleton_info(
     cap = max(min(target, time_cap, freq_cap), cur)    # never push volume below what they already do; time and run frequency are hard ceilings
     first = max(0, (monday(today) - start).days // 7)
 
-    def long_run(week_km: float) -> float:
-        return K.long_run_km(week_km, goal_km, experience, run_days, long_day_minutes, pace_s)
+    recent_longs: list[float] = [longest_recent_km] if longest_recent_km > 0 else []
+
+    def long_run(week_km: float, grow: bool = True) -> float:
+        """The long run for a week: its share/size/time limits, and growth of at most +10% or +2.5 km on the longest of the last four weeks.
+        With no history the first long run is capped at 40% of the week, so a short week can't open with a huge long run."""
+        raw = K.long_run_km(week_km, goal_km, experience, run_days, long_day_minutes, pace_s)
+        if grow:
+            prior = max(recent_longs[-4:], default=0.0)
+            allowed = max(prior * (1 + K.LONG_RUN_GROWTH_PCT), prior + K.LONG_RUN_GROWTH_FLOOR_KM) if prior > 0 else 0.40 * week_km
+            raw = min(raw, math.floor(allowed * 2) / 2)
+        recent_longs.append(raw)
+        return raw
 
     weeks: list[Week] = []
     level = min(cur, cap)

@@ -284,3 +284,52 @@ def test_every_marathon_block_peaks_its_long_run_near_32_km():
                                    weekly_minutes=900, long_day_minutes=300, easy_pace_s_km=390, run_days=4)
     longs = [w.long_run_km for w in weeks if w.phase in ("base", "build", "peak")]
     assert max(longs) <= 32 and longs[-1] >= 28 and sum(1 for x in longs if x >= 31) >= 2   # reaches 32 more than once, then tapers
+
+
+# ---- found by having the model write real plans from the real prompt (see docs/RESEARCH.md, "Live coach test") --------------
+@pytest.mark.parametrize("goal,level,days,base,weeks", [(42.195, "intermediate", 4, 35, 20), (42.195, "intermediate", 5, 40, 20), (42.195, "beginner", 4, 20, 24),
+                                                         (21.0975, "intermediate", 5, 30, 14), (10.0, "intermediate", 4, 25, 12), (5.0, "beginner", 3, 8, 10)])
+def test_long_run_never_opens_big_and_never_grows_faster_than_the_rule(goal, level, days, base, weeks):
+    from datetime import date, timedelta
+    from coach.skeleton import build_skeleton_info
+    t = date(2026, 11, 9)
+    w, _ = build_skeleton_info(plan_start=t, today=t, race_date=t + timedelta(weeks=weeks, days=-1), goal_km=goal, baseline_km=base, experience=level,
+                               weekly_minutes=600, long_day_minutes=300, easy_pace_s_km=390, run_days=days)
+    longs = [x.long_run_km for x in w if x.phase != "race"]
+    assert longs[0] <= 0.40 * w[0].target_km + 0.5                                         # a 35 km week no longer opens with a 21 km long run
+    for i, k in enumerate(longs):
+        prior = max(longs[max(0, i - 4):i], default=0)
+        if prior:
+            assert k <= max(prior * 1.10, prior + 2.5) + 0.5, (i, k, prior)
+
+
+def test_first_long_run_follows_what_the_athlete_actually_ran_recently():
+    from datetime import date, timedelta
+    from coach.skeleton import build_skeleton_info
+    t = date(2026, 11, 9)
+    kw = dict(plan_start=t, today=t, race_date=t + timedelta(weeks=20, days=-1), goal_km=42.195, baseline_km=40, experience="intermediate",
+              weekly_minutes=600, long_day_minutes=300, easy_pace_s_km=390, run_days=5)
+    assert build_skeleton_info(**kw)[0][0].long_run_km == 16.0                              # no history: 40% of the week
+    assert build_skeleton_info(**kw, longest_recent_km=24.0)[0][0].long_run_km == 16.5      # a long recent run lifts the growth limit; the week's share (42% of 40) then binds
+    assert build_skeleton_info(**kw, longest_recent_km=10.0)[0][0].long_run_km == 12.5
+
+
+def test_race_paces_come_from_code_and_are_ordered(tmp_path):
+    from coach.service import CoachService
+    from test_scenarios import prof
+    p = prof(goal_km=21.0975, goal_time_s=110 * 60)
+    rp = CoachService._race_paces(p)
+    sec = lambda s: int(s.split(":")[0]) * 60 + int(s.split(":")[1].split("/")[0])      # noqa: E731
+    assert sec(rp["5k"]) < sec(rp["10k"]) < sec(rp["half_marathon"]) < sec(rp["marathon"])
+    assert rp["goal"] == "5:13/km"                                                      # 110 min / 21.1 km
+    assert abs(sec(rp["half_marathon"]) - 313) <= 2                                     # VDOT reproduces the goal at the goal distance
+    assert CoachService._race_paces(prof(goal_time_s=None)) is None
+
+
+def test_prompt_states_the_rules_the_model_asked_about():
+    from coach.llm import SYSTEM
+    s = SYSTEM
+    assert "INCLUDES the race itself" in s                                              # 4 of 5 runs asked whether race week counts the race
+    assert '"intervals"' in s and "fartlek" in s and "marathon or half-marathon pace" in s and '"tempo"' in s     # types for hills / fartlek / goal-pace blocks
+    assert "easy_pace_s_per_km_estimate" in s and "race_paces_per_km" in s and "unknown" in s
+    assert "16–22" not in " ".join(sum(K.workout_menu(42.195, "intermediate").values(), []))      # no medium-long run the caps make impossible

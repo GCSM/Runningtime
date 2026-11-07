@@ -318,10 +318,10 @@ def workout_menu(goal_km: float, level: str) -> dict[str, list[str]]:
         peak = ["Half-marathon-pace segments: 2 × 5–6 km at goal pace within a long run or midweek", "Tempo: 30–40 min at threshold",
                 "Intervals: 5 × 1 km at 10K pace for sharpness", easy, long_]
     else:
-        build = ["Tempo: 30–40 min at threshold", "Medium-long run: 16–22 km easy midweek (intermediate/advanced)",
+        build = ["Tempo: 30–40 min at threshold", "Medium-long run: easy, as long as the weekday allows (about 12–16 km), only if it fits that day's minutes",
                  "Progression long run: final 25% at marathon effort", easy, long_]
         peak = ["Marathon-specific long run: mostly easy, final 8–16 km at goal marathon pace (not every week)", "Tempo: 30–40 min at threshold",
-                "Medium-long run: 16–22 km", easy, long_]
+                "Medium-long run: about 12–16 km, only if it fits that day's minutes", easy, long_]
     taper = ["Short race-pace efforts (e.g. 3–4 × 1 km at goal pace) to stay sharp, with much lower volume", easy, "Shakeout: 20–30 min easy + 4 strides, 1–2 days before the race"]
     if _level(level) == "beginner":
         base = ["Run/walk intervals if continuous running isn't comfortable yet (e.g. 1–2 min run / 1 min walk, building toward 30 min continuous)"] + base[:1] + [long_]

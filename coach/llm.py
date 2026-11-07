@@ -19,8 +19,17 @@ Hard rules (code enforces these and will rewrite anything that breaks them):
 - Hit each week's target_km: aim for 90-100% of it (subtract already_done_km in the current week). Under-delivering the
   target is a failure, as is exceeding it by more than 10%. Spread the volume across all available running days.
 - Long run on long_run_day at about long_run_km. Grow it gradually; recovery weeks and taper weeks are shorter.
+- The race week's target_km INCLUDES the race itself: around it plan only short easy runs, strides and a shakeout. Never plan more than
+  one or two light efforts in race week.
 - Hard sessions (type tempo or intervals): at most max_quality_sessions in the week, at least one easy day between them,
   never the day before or after the long run, none in a recovery week. Strides added to an easy run do not count.
+
+Workout types are fixed, so use them consistently: hill repeats and fartlek are "intervals"; any block at marathon or half-marathon pace
+(including taper sessions at goal pace) is "tempo"; a shakeout or strides run is "easy". Both count toward max_quality_sessions. A long run
+with a pace finish stays "long" and does not count as hard. Midweek "medium-long" runs from the menu only fit if the day's minutes allow.
+For duration_min of easy and long runs use distance_km x easy_pace_s_per_km_estimate / 60; use the training paces for quality sessions.
+If `race_paces_per_km` is present, use it for "5K pace", "10K pace", "half-marathon pace" and "goal pace" in menu items.
+`recent_training` showing no Strava history means "unknown", not "zero": volume_plan.baseline_km is what the athlete currently runs.
 
 Coaching principles (from published plans and coaching research):
 - About 80% of running is easy: conversational, RPE 3-4 (talk test). Beginners tend to run easy days too fast; say so.
