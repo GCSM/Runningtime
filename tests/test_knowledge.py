@@ -276,7 +276,7 @@ def test_every_marathon_block_peaks_its_long_run_near_32_km():
         o = _mk_outlook(weeks=26, mins=900, long_min=300, days=days, base=base, exp=level)
         assert 31 <= o.peak_long_km <= 32, (level, days, o.peak_long_km)
     assert max(K.LONG_RUN_CAP_KM[lv][42.195] for lv in K.LEVELS) == min(K.LONG_RUN_CAP_KM[lv][42.195] for lv in K.LEVELS) == 32
-    # …and the long run grows to it gradually (never more than +10% / +2.5 km over the previous 4 weeks)
+    # the skeleton's long runs top out at 32 km and reach it more than once before the taper (growth limits are applied in plancheck)
     from datetime import date, timedelta
     from coach.skeleton import build_skeleton_info
     t = date(2026, 11, 2)
