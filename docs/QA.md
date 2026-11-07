@@ -90,3 +90,14 @@ equivalent mutants (a changed constant that cannot change any output). The rest 
 7. **Concurrency and operations**: two simultaneous jobs for one user, several worker processes, a database restored from backup mid-plan.
 8. **Visual regression**: the plan screens are checked by hand and by text assertions, not by screenshot comparison.
 9. **Races longer than a marathon** are refused at setup (3 km to 42.5 km); ultra training is a different problem.
+
+## Code-built planner (PLAN_ENGINE=builder)
+
+`coach/builder.py` writes the day-by-day plan in code from the weekly skeleton: session ladders (tempo minutes, interval rungs, fartlek, run/walk,
+paced long runs, goal-pace sharpeners) placed by a scheduler that respects the same rules as the guard. `PLAN_ENGINE=model` (default) keeps the
+language-model path; flip to `builder` once you are happy. Checks: `tests/test_builder.py` (rules across ~430 athletes with the guard repairing
+~0 workouts), `python tools/builder_eval.py` (audit + how much the guard changed), and an independent coach review that found (and we fixed)
+missing base-phase threshold work in marathon/half plans, 5K-pace intervals every week in marathon peaks, medium-long runs the day after the long
+run, run/walk minutes ignoring the warm-up walk, and "fuel" text on 5K/10K race day. Known limits: 3-day weeks for half/marathon can't always carry
+the skeleton's km within weekday caps (weeks land at 85-92%); free-text notes (e.g. "away Thursday-Sunday") are not yet converted to changes in
+builder mode.
