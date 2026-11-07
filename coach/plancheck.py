@@ -77,7 +77,7 @@ def sanitize(
             dist = dur * 60 / pace_s_km if wtype != "cross" else 0.0
         if dur is None:
             dur = dist * pace_s_km / 60
-        if not is_race and av and av.minutes and dur > av.minutes * 1.1:
+        if not is_race and av and av.minutes and dur > av.minutes + 1:
             s = av.minutes / dur
             notes.append(f"{iso}: scaled to fit {av.minutes} min available")
             dist, dur = dist * s, dur * s

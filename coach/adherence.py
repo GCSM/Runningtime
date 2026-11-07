@@ -41,12 +41,17 @@ def weekly_km(activities: list[dict]) -> dict[date, float]:
 
 
 def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4) -> float | None:
-    """Mean weekly km over the last `weeks` *complete* weeks, or None if there is no history at all."""
+    """Mean weekly km over the last `weeks` *complete* weeks (ignoring one low week among steady ones), or None if there is no history at all."""
     if not activities:
         return None
     totals = weekly_km(activities)
     this_wk = monday(today)
     vals = [totals.get(this_wk - timedelta(weeks=i), 0.0) for i in range(1, weeks + 1)]
+    top = max(vals)
+    if weeks >= 4 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
+        # A planned step-back week (or one off week) among otherwise steady weeks shouldn't pull the baseline down: when rebuilt every
+        # Monday, a plan would otherwise forget its own progression after each recovery week.
+        vals = sorted(vals, reverse=True)[:weeks - 1]
     return sum(vals) / len(vals)
 
 

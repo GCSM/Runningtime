@@ -206,3 +206,23 @@ Weekly volume used to be limited only by the goal/level range and the athlete's 
   its usual share (40% marathon, 35% half). A 4-run intermediate marathon peaks around 60-65 km; a fifth run day allows the full ~78 km.
   The plan page says when run frequency is what limits the build, and the readiness warning suggests adding a run day.
 - **Hard sessions**: with 4 run days or fewer a non-advanced athlete gets one tempo/interval session plus the long run, not two.
+
+
+## Plan shape: build up, peak late (rewritten after "32 km every week")
+
+The first skeleton ramped volume at the maximum safe rate until it hit the goal's ceiling, then held it. On a 24-week marathon that meant a
+32 km long run in eleven of the weeks and nine identical 78 km weeks. Three defects, all fixed in `coach/skeleton.py`:
+
+1. **Ramp-then-plateau.** Volume and long run now climb evenly across *all* the build weeks (the gentler of "as fast as is safe" and "spread
+   so the peak lands at the end"), peak volume is held for at most two build weeks, and the biggest long run arrives once, in the last build
+   week before the taper (one or two near-peak runs before it, step-back weeks in between). A short plan is limited by the safe ramp, not rushed.
+2. **Weekly reviews erased step-back weeks.** The recovery rule was "not the first week", and every Monday review makes the current week the
+   first week, so an athlete following the app never got a recovery week. It is now keyed to the absolute week of the plan.
+3. **Weekly reviews restarted the build.** The review baseline was the mean of the last four weeks (a step-back week dragged it down) and the
+   current week was set to that baseline with no progression. The baseline now ignores one low week among steady ones, and a mid-plan rebuild
+   steps up from what was achieved along the same ladder.
+
+`coach/planaudit.py` is the written definition of a good plan (shape: gradual build, late peak, at most two peak long runs, a step-back every
+fourth week, taper steps down; rules: availability, weekly totals, hard-session spacing, run caps). `tests/test_plan_shape.py` runs it over
+5,000+ athlete configurations (the old skeleton fails 2,800 of them, the new one none) and simulates weekly reviews. `tools/plan_eval.py`
+builds the real coach prompt for realistic athletes, takes a plan from a model (`live` calls the real API), and audits the result.

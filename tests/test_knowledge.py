@@ -311,7 +311,7 @@ def test_first_long_run_follows_what_the_athlete_actually_ran_recently():
               weekly_minutes=600, long_day_minutes=300, easy_pace_s_km=390, run_days=5)
     assert build_skeleton_info(**kw)[0][0].long_run_km == 16.0                              # no history: 40% of the week
     assert build_skeleton_info(**kw, longest_recent_km=24.0)[0][0].long_run_km == 16.5      # a long recent run lifts the growth limit; the week's share (42% of 40) then binds
-    assert build_skeleton_info(**kw, longest_recent_km=10.0)[0][0].long_run_km == 12.5
+    assert 10.0 < build_skeleton_info(**kw, longest_recent_km=10.0)[0][0].long_run_km <= 12.5      # one step up the ladder from a 10 km recent run, never more than +2.5
 
 
 def test_race_paces_come_from_code_and_are_ordered(tmp_path):

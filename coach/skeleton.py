@@ -77,30 +77,60 @@ def build_skeleton_info(
 
     recent_longs: list[float] = [longest_recent_km] if longest_recent_km > 0 else []
 
-    def long_run(week_km: float, grow: bool = True, recovery: bool = False) -> float:
-        """The long run for a week: its share/size/time limits, and growth of at most +10% or +2.5 km on the longest of the last four weeks.
-        With no history the first long run is capped at 40% of the week, so a short week can't open with a huge long run."""
+    def long_run(week_km: float, ladder: float | None = None, recovery: bool = False) -> float:
+        """The long run for a week: its share/size/time limits, growth of at most +10% or +2.5 km on the longest of the last four weeks,
+        and the build-up ladder for this week. With no history the first long run is capped at 40% of the week."""
         raw = K.long_run_km(week_km, goal_km, experience, run_days, long_day_minutes, pace_s)
-        if grow:
-            prior = max(recent_longs[-4:], default=0.0)
-            allowed = max(prior * (1 + K.LONG_RUN_GROWTH_PCT), prior + K.LONG_RUN_GROWTH_FLOOR_KM) if prior > 0 else 0.40 * week_km
-            raw = min(raw, math.floor(allowed * 2) / 2)
-            if recovery and prior > 0:                       # a recovery week cuts the long run too, not just the weekday runs
-                raw = min(raw, math.floor(K.RECOVERY_FACTOR * prior * 2) / 2)
+        prior = max(recent_longs[-4:], default=0.0)
+        allowed = max(prior * (1 + K.LONG_RUN_GROWTH_PCT), prior + K.LONG_RUN_GROWTH_FLOOR_KM) if prior > 0 else 0.40 * week_km
+        raw = min(raw, math.floor(allowed * 2) / 2)
+        if ladder is not None:
+            raw = min(raw, math.floor(ladder * 2) / 2)
+        if recovery and prior > 0:                           # a recovery week cuts the long run too, not just the weekday runs
+            raw = min(raw, math.floor(K.RECOVERY_FACTOR * prior * 2) / 2)
         recent_longs.append(raw)
         return raw
 
+    # ---- the build: volume and long run climb gradually across ALL the build weeks and arrive at their peak near the end -------------
+    # (Published plans don't reach their peak early and hold it: the biggest long run comes once or twice, in the last weeks before the
+    # taper. The ramp is the gentler of "as fast as is safe" and "evenly spread so the peak lands at the end".)
+    train = list(range(first, n_train))
+    recov = {i for i in train if i % K.RECOVERY_EVERY == K.RECOVERY_EVERY - 1 and i != 0 and i < n_train - 1 and n_train >= K.MIN_WEEKS_FOR_RECOVERY}
+    # (absolute week index, not 'relative to the current week': a review on the Monday of a step-back week must keep it a step-back week)
+    m = sum(1 for i in train if i not in recov)                  # number of build (non-recovery) weeks from here
+    mid = first > 0                                              # a mid-plan rebuild: the baseline is what was ALREADY achieved, so this week steps up from it
+    off = 1 if mid else 0
+    hold = 2 if m + off >= 6 else 1                              # weeks spent at peak volume
+    k_peak = max(1, m + off - hold)                              # build step at which weekly volume first reaches its peak
+    level0 = min(cur, cap)
+    peak_long = K.long_run_km(cap, goal_km, experience, run_days, long_day_minutes, pace_s)
+    long0 = max(recent_longs[-4:], default=0.0)                  # the athlete's recent longest run (mid-plan), the anchor for the long-run ladder
+
     weeks: list[Week] = []
-    level = min(cur, cap)
-    for i in range(first, n_train):
-        recovery = (i % K.RECOVERY_EVERY == K.RECOVERY_EVERY - 1 and i != first and i < n_train - 1
-                    and n_train >= K.MIN_WEEKS_FOR_RECOVERY)
-        if i != first and not recovery:
-            level = min(K.next_week_km(level, experience), cap)
+    level, j, first_long = level0, 0, None
+    for i in train:
+        recovery = i in recov
+        if not recovery:
+            step = j + off
+            if step > 0:
+                ramp_to = level0 + (cap - level0) * min(1.0, step / k_peak)
+                level = max(level, min(K.next_week_km(level, experience), ramp_to))
         week_km = level * K.RECOVERY_FACTOR if recovery else level
         frac = i / n_train
         phase = "base" if frac < 0.4 else "build" if frac < 0.8 else "peak"
-        weeks.append(Week(start + timedelta(weeks=i), phase, recovery, False, round(week_km * 2) / 2, long_run(week_km, recovery=recovery)))
+        ladder = None
+        if not recovery:
+            top = max(peak_long, long0, first_long or 0.0)
+            if long0 > 0:                                        # anchored on a real recent long run: one step toward the peak this week
+                ladder = long0 + (top - long0) * min(1.0, (j + 1) / max(1, m))
+            elif first_long is not None:                         # fresh plan: the first long run sets the start, then climb evenly
+                ladder = first_long + (top - first_long) * min(1.0, j / max(1, m - 1))
+        lr = long_run(week_km, ladder=ladder, recovery=recovery)
+        if first_long is None and not recovery:
+            first_long = lr
+        if not recovery:
+            j += 1
+        weeks.append(Week(start + timedelta(weeks=i), phase, recovery, False, round(week_km * 2) / 2, lr))
 
     for k, mult in enumerate(mults):
         i = n_train + k
