@@ -314,6 +314,8 @@ def reference_plan(p, weeks, earliest, done_km_this_week=0.0):
     avail = {i: a for i, a in enumerate(p.availability[d] for d in DAYS)}
     long_idx = DAYS.index(p.long_run_day)
     run_days = sum(a.available for a in p.availability.values())
+    long_dates = {wk.week_start + timedelta(days=long_idx) for wk in weeks if wk.long_run_km > 0 and avail[long_idx].available
+                  and wk.week_start + timedelta(days=long_idx) >= earliest}          # every long run in the plan, so spacing holds across Monday too
     for wk in weeks:
         days = [(i, wk.week_start + timedelta(days=i)) for i in range(7) if avail[i].available and wk.week_start + timedelta(days=i) >= earliest]
         if wk.race_week:
@@ -329,7 +331,7 @@ def reference_plan(p, weeks, earliest, done_km_this_week=0.0):
         for i, d in days:
             if len(q_days) >= limit or i == long_idx:
                 continue
-            if long_d and abs((d - long_d).days) < 2:
+            if any(abs((d - x).days) < 2 for x in long_dates) or 0 <= (p.race_date - d).days <= 2:
                 continue
             if any(abs((d - x).days) < 2 for x in q_days):
                 continue

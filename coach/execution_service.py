@@ -14,11 +14,13 @@ class ExecutionMixin:
         """Score for a completed/partial workout (needs its matched run), else None."""
         if not w.get("activity_id"):
             return None
-        return X.score_run(w, self.db.get_activity(w["activity_id"]), self._paces_s())
+        p = self.db.get_profile()
+        return X.score_run(w, self.db.get_activity(w["activity_id"]), self._paces_s(), p.units if p else "km")
 
     def execution_rows(self, days: int = X.WINDOW_DAYS) -> list[dict]:
         today = self.today()
         paces = self._paces_s()
+        units = (self.db.get_profile().units if self.db.get_profile() else "km")
         rows = []
         for w in self.db.get_workouts(today - timedelta(days=days), today - timedelta(days=1)):
             if w["type"] == "race" or w["status"] not in ("completed", "partial", "missed"):
@@ -26,10 +28,10 @@ class ExecutionMixin:
             if w["status"] == "missed":
                 rows.append({"date": w["date"], "score": 0, "missed": True, "pace_dev": None, "short": False})
                 continue
-            r = X.score_run(w, self.db.get_activity(w["activity_id"]) if w["activity_id"] else None, paces)
+            r = X.score_run(w, self.db.get_activity(w["activity_id"]) if w["activity_id"] else None, paces, units)
             if r:
                 rows.append({"date": w["date"], "score": r["score"], "missed": False, "pace_dev": r["pace_dev"] if r["pace_score"] is not None else None,
-                             "short": r["actual_km"] < 0.85 * w["distance_km"]})
+                             "short": r["actual_km"] < 0.85 * w["distance_km"], "easy": w["type"] in X.EASY_TYPES})
         return rows
 
     def execution_overview(self, days: int = X.WINDOW_DAYS) -> dict | None:
@@ -54,7 +56,7 @@ class ExecutionMixin:
             return None
         if not [w for w in self.db.get_workouts(today, today + timedelta(days=13)) if w["status"] == "planned" and w["type"] != "race"]:
             return None
-        why = X.REASON_TEXT.get(ov["main_reason"] or "", "")
+        why = X.REASON_TEXT.get(ov["main_reason"])
         return {**ov, "reason_text": why, "threshold": X.THRESHOLD}
 
     def dismiss_ease_suggestion(self, days: int = 7) -> None:

@@ -21,14 +21,19 @@ def match_workouts(workouts: list[dict], activities: list[dict], today: date) ->
             status = "planned" if date.fromisoformat(w["date"]) >= today else "missed"
             out[w["id"]] = {"status": status, "actual_km": None, "activity_id": None}
             continue
-        a = runs[0]
-        km = a["distance_m"] / 1000
+        a = runs[0]                                           # the longest run is "the" run (its id is what the workout links to)…
+        km = sum(r["distance_m"] for r in runs) / 1000        # …but a run split in two (or a warm-up jog plus the session) still counts in full
+        moving = sum(r["moving_s"] for r in runs)
         if w.get("distance_km"):
             ratio = km / w["distance_km"]
         elif w.get("duration_min"):
-            ratio = a["moving_s"] / 60 / w["duration_min"]
+            ratio = moving / 60 / w["duration_min"]
         else:
             ratio = 1.0
+        if ratio < 0.8 and date.fromisoformat(w["date"]) >= today:
+            # Today isn't over: a short morning run is the start of the day's training, not a "partial" workout, and must not block the day.
+            out[w["id"]] = {"status": "planned", "actual_km": None, "activity_id": None}
+            continue
         out[w["id"]] = {"status": "completed" if ratio >= 0.8 else "partial", "actual_km": round(km, 2), "activity_id": a["id"]}
     return out
 

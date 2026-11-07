@@ -56,12 +56,18 @@ def test_adherence_matching():
     ws = [{"id": 1, "date": "2026-11-03", "distance_km": 8, "duration_min": 50},
           {"id": 2, "date": "2026-11-04", "distance_km": 10, "duration_min": 60},
           {"id": 3, "date": "2026-11-02", "distance_km": 6, "duration_min": 40},
-          {"id": 4, "date": "2026-11-05", "distance_km": 6, "duration_min": 40}]
+          {"id": 4, "date": "2026-11-05", "distance_km": 6, "duration_min": 40},
+          {"id": 5, "date": "2026-11-01", "distance_km": 8, "duration_min": 50},
+          {"id": 6, "date": "2026-10-31", "distance_km": 10, "duration_min": 60}]
     acts = [{"id": 10, "date": "2026-11-03", "distance_m": 8200, "moving_s": 2900},
-            {"id": 11, "date": "2026-11-04", "distance_m": 4000, "moving_s": 1400}]
+            {"id": 11, "date": "2026-11-04", "distance_m": 4000, "moving_s": 1400},
+            {"id": 12, "date": "2026-11-01", "distance_m": 4000, "moving_s": 1500},
+            {"id": 13, "date": "2026-10-31", "distance_m": 6000, "moving_s": 2100}, {"id": 14, "date": "2026-10-31", "distance_m": 4500, "moving_s": 1600}]
     m = adherence.match_workouts(ws, acts, TODAY)
-    assert m[1]["status"] == "completed" and m[2]["status"] == "partial"
-    assert m[3]["status"] == "missed" and m[4]["status"] == "planned"
+    assert m[1]["status"] == "completed" and m[3]["status"] == "missed" and m[4]["status"] == "planned"
+    assert m[5]["status"] == "partial" and m[5]["actual_km"] == 4.0                       # a past day that fell short is partial
+    assert m[2]["status"] == "planned" and m[2]["activity_id"] is None                    # TODAY's short morning run: the day isn't over, so it isn't "partial" yet
+    assert m[6]["status"] == "completed" and m[6]["actual_km"] == 10.5 and m[6]["activity_id"] == 13     # two runs on one day add up; the longest is the link
 
 
 def test_sanitize_enforces_rules():
@@ -262,10 +268,20 @@ def test_delete_account_removes_everything(tmp_path):
     assert c.get("/", follow_redirects=False).headers["location"] == "/login"
 
 
-def test_marathon_race_week_has_room_for_the_race():
-    p = profile(goal_km=42.195, goal_label="Marathon", race_date=TODAY + timedelta(weeks=20))
+def test_marathon_race_week_has_room_for_the_race_and_some_easy_running_around_it():
+    p = profile(goal_km=42.195, goal_label="Marathon", race_date=TODAY + timedelta(weeks=20, days=4))        # a Sunday
     weeks = skel(p, baseline=40)
-    assert weeks[-1].race_week and weeks[-1].target_km >= 42.195 + 6
+    peak = max(w.target_km for w in weeks if w.phase in ("base", "build", "peak"))
+    assert weeks[-1].race_week and weeks[-1].target_km >= 42.195 + max(6.0, 0.22 * peak) - 0.5      # the race plus ~22% of a peak week, not just 6 km
+
+
+def test_a_race_early_in_the_week_gets_its_taper_in_the_week_before():
+    p = profile(goal_km=42.195, goal_label="Marathon", race_date=TODAY + timedelta(weeks=20))                # a Wednesday
+    weeks = skel(p, baseline=40)
+    assert weeks[-1].race_week and weeks[-1].week_start == monday(p.race_date) and weeks[-1].target_km <= 42.195 + 5     # just the race and a shakeout or two
+    before = weeks[-2]
+    assert before.phase == "taper" and before.long_run_km == 0 and before.target_km < 25                  # the real race week: light, no long run
+    assert weeks[-3].long_run_km <= 0.62 * max(w.long_run_km for w in weeks[:-3]) + 0.5
 
 
 # ---- the real Claude call (fake SDK client) --------------------------------------------

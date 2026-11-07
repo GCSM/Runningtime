@@ -23,9 +23,9 @@ EASY_TYPES = ("easy", "long", "recovery")
 COOLDOWN_DAYS = 14
 
 
-def fmt_pace(s: float) -> str:
-    s = int(round(s))
-    return f"{s // 60}:{s % 60:02d}/km"
+def fmt_pace(s: float, units: str = "km") -> str:
+    s = int(round(s * (1.609344 if units == "mi" else 1.0)))
+    return f"{s // 60}:{s % 60:02d}/{'mi' if units == 'mi' else 'km'}"
 
 
 def target_band(workout: dict, paces_s: dict | None) -> tuple[float, float] | None:
@@ -62,7 +62,7 @@ def _pace_score(pace: float, band: tuple[float, float]) -> tuple[float, float]:
     return max(0.0, 100 * (1 - abs(dev) / PACE_TOLERANCE)), dev
 
 
-def score_run(workout: dict, activity: dict | None, paces_s: dict | None) -> dict | None:
+def score_run(workout: dict, activity: dict | None, paces_s: dict | None, units: str = "km") -> dict | None:
     """Score one completed or partial workout against its run. None when there is nothing to score (no run, skipped, race not done)."""
     if not activity or workout.get("status") not in ("completed", "partial") or not workout.get("distance_km"):
         return None
@@ -76,17 +76,19 @@ def score_run(workout: dict, activity: dict | None, paces_s: dict | None) -> dic
     p_score, dev = (None, 0.0)
     if band and pace:
         p_score, dev = _pace_score(pace, band)
+        if workout.get("type") in EASY_TYPES and dev > 0:
+            p_score = 100.0           # running an easy day slower than the band is not an execution error (only too fast defeats its purpose)
     score = round((d_score + p_score) / 2) if p_score is not None else round(d_score)
     notes = []
     off = actual_km / workout["distance_km"] - 1
     if abs(off) >= 0.05:
         notes.append(f"{abs(off):.0%} {'short' if off < 0 else 'long'}")
-    if p_score is not None and abs(dev) >= 0.03:
+    if p_score is not None and abs(dev) >= 0.03 and (dev < 0 or workout.get("type") not in EASY_TYPES):
         notes.append(f"pace {abs(dev):.0%} {'too fast' if dev < 0 else 'too slow'}")
     return {
         "score": score, "distance_score": round(d_score), "pace_score": None if p_score is None else round(p_score),
-        "actual_km": round(actual_km, 1), "actual_pace": fmt_pace(pace) if pace else None,
-        "target_pace": f"{fmt_pace(band[0])}–{fmt_pace(band[1])}" if band else None, "pace_dev": round(dev, 3),
+        "actual_km": round(actual_km, 1), "actual_pace": fmt_pace(pace, units) if pace else None,
+        "target_pace": f"{fmt_pace(band[0], units)}–{fmt_pace(band[1], units)}" if band else None, "pace_dev": round(dev, 3),
         "label": label(score), "notes": notes, "headline": " · ".join(notes) if notes else "right on target",
     }
 
@@ -101,7 +103,7 @@ def overview(rows: list[dict]) -> dict | None:
         return None
     scores = [r["score"] for r in rows]
     under = [r for r in rows if r["score"] < THRESHOLD]
-    paced = [r for r in rows if r.get("pace_dev") is not None and not r["missed"]]
+    paced = [r for r in rows if r.get("pace_dev") is not None and not r["missed"] and r.get("easy", True)]
     too_fast = sum(1 for r in paced if r["pace_dev"] <= -0.03)
     short = sum(1 for r in rows if not r["missed"] and r.get("short"))
     missed = sum(1 for r in rows if r["missed"])
@@ -111,6 +113,7 @@ def overview(rows: list[dict]) -> dict | None:
 
 
 REASON_TEXT = {
+    None: "runs that landed off the plan's distance or pace",
     "missed": "runs that were missed",
     "too_fast": "easy runs that were faster than the target pace",
     "short": "runs that finished well short of the planned distance",

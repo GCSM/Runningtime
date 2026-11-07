@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 
 from . import adherence
+from . import fitness as F
 from . import knowledge as K
 from .config import Settings
 from .db import DB
@@ -39,6 +40,10 @@ class PlanInputs:
     @property
     def paces(self) -> dict[str, str] | None:
         return K.pace_text(self.paces_raw) if self.paces_raw else None
+
+    @property
+    def paces_mi(self) -> dict[str, str] | None:
+        return K.pace_text(self.paces_raw, "mi") if self.paces_raw else None
 
 
 class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
@@ -85,13 +90,17 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         """How much the athlete currently runs per week, and where that number came from. Never silently 0."""
         today = self.today()
         real = adherence.recent_baseline_km(acts, today, fill_km=p.baseline_km)   # mean of last 4 complete weeks (weeks before the first run count as the stated volume); None if no complete week yet
-        if real is not None and (real >= 5 or trust_actuals):
-            return real, "strava"
         last = max((date.fromisoformat(a["date"]) for a in acts), default=None)
         days_off = (today - last).days if last else 0
+        if last is not None and days_off >= 10:
+            # A layoff: restart from a share of what they were doing, never from the (now zero) recent average and never from a made-up number.
+            best_week = max(adherence.weekly_km(acts).values(), default=0.0)
+            before = max(p.baseline_km, best_week) if p.baseline_km > 0 or best_week > 0 else 0.0
+            if before > 0:
+                return before * K.restart_fraction(days_off), "restart"
+        if real is not None and (real >= 5 or trust_actuals):
+            return real, "strava"
         if p.baseline_km > 0:
-            if real is not None and days_off >= 10:                 # stated volume, but a real layoff since
-                return p.baseline_km * K.restart_fraction(days_off), "restart"
             return p.baseline_km, "stated"
         if p.experience == "beginner":
             return 0.0, "stated"                                     # "just starting": the skeleton floors this at 8 km
@@ -105,10 +114,31 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         easy_est = adherence.easy_pace_s_km(acts, today)
         if p.goal_time_s:
             paces = K.training_paces(K.vdot(p.goal_km * 1000, p.goal_time_s))
-            return paces, "goal time (Daniels VDOT)", sum(paces["easy"]) / 2
+            goal_easy = sum(paces["easy"]) / 2
+            # Session paces follow the goal, but time and volume BUDGETS must follow what the athlete can actually run: if their real easy
+            # runs are slower than the goal implies, budgeting at the goal's easy pace would promise distances they can't cover in the time.
+            return paces, "goal time (Daniels VDOT)", max(goal_easy, easy_est) if easy_est else goal_easy
         if easy_est:
             return K.paces_from_easy(easy_est), "recent runs", easy_est
         return None, "none: prescribe by effort (RPE / talk test)", DEFAULT_EASY_PACE_S_KM
+
+    def _goal_warnings(self, p: Profile, acts: list[dict], paces, today: date) -> list[str]:
+        """Is the goal time believable for this athlete? Compares with what their own recent runs show (nothing to compare: no warning)."""
+        out: list[str] = []
+        if not p.goal_time_s or not paces:
+            return out
+        est = F.estimate(acts, today)
+        if est:
+            ga = F.goal_assessment(est["vdot"], p.goal_km, p.goal_time_s)
+            if ga and ga["gap_pct"] < -6:
+                out.append(f"Your goal of {ga['goal']} is well beyond what your recent runs support (they point to about {ga['predicted']} for the {K.goal_name(p.goal_km)} today). "
+                           f"The plan's paces follow your goal; a goal closer to {ga['predicted']} would be a safer target, and you can raise it as you improve.")
+        easy_est = adherence.easy_pace_s_km(acts, today)
+        goal_easy = sum(paces["easy"]) / 2
+        if easy_est and easy_est > goal_easy * 1.15:
+            out.append(f"Your recent easy runs average {K.fmt_pace(easy_est, p.units)}, much slower than the {K.fmt_pace(goal_easy, p.units)} your goal time implies, "
+                       f"so weekly distances are budgeted at your real pace. Consider a goal time that matches how you run now.")
+        return out
 
     def readiness_warnings(self) -> list[str]:
         """Would the plan we can build under-prepare this athlete for their goal? Computed from the skeleton, no model call."""
@@ -126,20 +156,21 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         weeks, outlook = build_skeleton_info(
             plan_start=plan_start, today=today, race_date=p.race_date, goal_km=p.goal_km, baseline_km=base_km,
             experience=p.experience, weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes,
-            easy_pace_s_km=pace, run_days=run_days, baseline_source=source,
+            easy_pace_s_km=pace, run_days=run_days, baseline_source=source, units=p.units,
             longest_recent_km=max((a["distance_m"] / 1000 for a in acts if a["date"] >= (today - timedelta(days=28)).isoformat()), default=0.0),
             other_day_minutes=[a.minutes for d, a in p.availability.items() if a.available and d != p.long_run_day],
         )
+        outlook.warnings = outlook.warnings + self._goal_warnings(p, acts, paces, today)
         return PlanInputs(weeks, pace, outlook, paces, basis, run_days)
 
     @staticmethod
-    def _race_paces(p: Profile) -> dict[str, str] | None:
+    def _race_paces(p: Profile, units: str = "km") -> dict[str, str] | None:
         """Pace for each race distance implied by the goal time (Daniels VDOT), so "10K pace" or "goal pace" in a session is a number from code."""
         if not p.goal_time_s:
             return None
         v = K.vdot(p.goal_km * 1000, p.goal_time_s)
-        out = {name: K.fmt_pace(K.race_time_s(v, m) / (m / 1000)) for name, m in (("5k", 5000.0), ("10k", 10000.0), ("half_marathon", 21097.5), ("marathon", 42195.0))}
-        out["goal"] = K.fmt_pace(p.goal_time_s / p.goal_km)
+        out = {name: K.fmt_pace(K.race_time_s(v, m) / (m / 1000), units) for name, m in (("5k", 5000.0), ("10k", 10000.0), ("half_marathon", 21097.5), ("marathon", 42195.0))}
+        out["goal"] = K.fmt_pace(p.goal_time_s / p.goal_km, units)
         return out
 
     def _context(self, p: Profile, inp: PlanInputs, acts: list[dict], plan_start: date, note: str = "") -> dict:
@@ -177,8 +208,10 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
                 "meaning": "start_km/peak_km are the weekly distances the weekly skeleton below builds to; baseline_source says how "
                            "the starting point was determined. Do not under-deliver the weekly target_km.",
             },
+            "units": p.units,
             "training_paces_per_km": inp.paces,
             "race_paces_per_km": self._race_paces(p),
+            **({"training_paces_per_mile": inp.paces_mi, "race_paces_per_mile": self._race_paces(p, "mi")} if p.units == "mi" else {}),
             "training_paces_basis": inp.paces_basis,
             "workout_menu_by_phase": {ph: menu[ph] for ph in menu if ph in phases},
             "injury_or_pain_mentioned_in_check_in": mentions_pain(note),
@@ -228,6 +261,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             profile=p, weeks=inp.weeks, today=today, blocked_dates=set(ctx["blocked_dates"]),
             done_km_by_week={monday(today): totals.get(monday(today), 0.0)}, pace_s_km=inp.pace,
             level=p.experience, longest_recent_km=longest,
+            done_quality={monday(today): sum(1 for w in self.db.get_workouts(monday(today), today) if w["type"] in K.QUALITY_TYPES and w["status"] in ("completed", "partial"))},
             suppress_quality_until=max([d for d in ((today + timedelta(days=7)) if mentions_pain(note) else None, self.pain_until()) if d] or [None],
                                        default=None),
         )
@@ -257,7 +291,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         workouts = [w for w in workouts if w["week_start"] not in keep]       # a week we keep is kept whole, never a mix of old and new
         self.db.replace_plan_from(self.today(), [w.to_row() for w in inp.weeks if w.week_start >= monday(today)], workouts, keep_weeks=keep)
         self.refresh_statuses()
-        text = inp.outlook.athlete_text(K.goal_name(p.goal_km), p.experience)
+        text = inp.outlook.athlete_text(K.goal_name(p.goal_km), p.experience, p.units)
         self.db.kv_set("volume_outlook", {**inp.outlook.to_dict(), "text": text, "level": p.experience,
                                           "goal": K.goal_name(p.goal_km), "paces_s": inp.paces_raw, "paces_basis": inp.paces_basis})
         return workouts, out["summary"].rstrip() + "\n\n" + text
@@ -268,10 +302,10 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             today = self.today()
             acts = self.db.activities_since(today - timedelta(days=HISTORY_DAYS))
             plan_start = monday(today)
-            self.db.kv_set("plan_start", plan_start.isoformat())
             inp = self._skeleton(p, acts, plan_start)
             ctx = self._context(p, inp, acts, plan_start)
             _, summary = self._run_coach(p, inp, acts, ctx, "generate")
+            self.db.kv_set("plan_start", plan_start.isoformat())      # only once the plan really exists: a failed attempt must not move the plan's origin
             self.db.log("plan", summary)
             self.db.kv_set("last_review_week", monday(today).isoformat())
             return summary
@@ -355,9 +389,14 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             self.settings.auto_adjust
             and self.db.get_workouts()
             and self.db.kv_get("last_review_week") != monday(self.today()).isoformat()
-            and self.today() < (self.db.get_profile().race_date if self.db.get_profile() else date.min)
+            and self.today() <= (self.db.get_profile().race_date - timedelta(days=3) if self.db.get_profile() else date.min)
+            and self.db.kv_get("auto_review_retry_after", "") <= self.today().isoformat()
         ):
-            self.review(sync=False)
+            try:
+                self.review(sync=False)
+            except Exception:
+                self.db.kv_set("auto_review_retry_after", (self.today() + timedelta(days=1)).isoformat())     # don't hammer a failing model every 30 minutes
+                raise
 
     # ---- calendar feed -----------------------------------------------------------------------------------
     def calendar_token(self) -> str | None:

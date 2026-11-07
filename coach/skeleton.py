@@ -58,11 +58,16 @@ def build_skeleton_info(
     baseline_source: str = "stated",
     longest_recent_km: float = 0.0,
     other_day_minutes: list[int] | None = None,
+    units: str = "km",
 ) -> tuple[list[Week], VolumeOutlook]:
     """Weeks from monday(today) to the race week, plus a description of the volume plan. Phases are positioned over the
     whole plan (plan_start..race); the ramp starts from `baseline_km` at the current week."""
     start, race_wk = monday(plan_start), monday(race_date)
-    n = (race_wk - start).days // 7 + 1
+    n_cal = (race_wk - start).days // 7 + 1                      # calendar weeks through the week the race falls in
+    # A race early in the week (Mon-Wed) leaves its own calendar week almost empty: the week BEFORE it is the real race week (the last full
+    # week, 3-9 days out), so the taper is laid out to end there and the race's own week just holds the race and a shakeout.
+    shift = 1 if race_date.weekday() <= 2 and n_cal >= 2 else 0
+    n = n_cal - shift
     mults = K.taper_multipliers(goal_km)
     taper = min(len(mults), n)
     mults = mults[len(mults) - taper:] if taper < len(mults) else mults
@@ -151,18 +156,20 @@ def build_skeleton_info(
         race = i == n - 1
         week_km = level * mult
         if race:  # the race itself is part of race week; plus a modest amount of easy running around it
-            week_km = K.race_week_km(goal_km, level)
+            week_km = K.race_week_km(goal_km, level) - (goal_km if shift else 0.0)    # (the race is in the next calendar week when shifted)
             long_km = 0.0
         else:
             share = taper_longs[k] if k < len(taper_longs) else 0.5
             long_km = min(long_run(week_km), math.floor(share * max(peak_training_long, 1.0) * 2) / 2)
-        weeks.append(Week(start + timedelta(weeks=i), "race" if race else "taper", False, race, round(week_km * 2) / 2, long_km))
+        weeks.append(Week(start + timedelta(weeks=i), "race" if race and not shift else "taper", False, race and not shift, round(week_km * 2) / 2, long_km))
+    if shift:
+        weeks.append(Week(start + timedelta(weeks=n), "race", False, True, round((goal_km + 4.0) * 2) / 2, 0.0))
 
     training = [w for w in weeks if w.phase in ("base", "build", "peak")]
     peak = max((w.target_km for w in training), default=round(cur * 2) / 2)
     if not training or cur >= target:
         limit = "none"
-    elif level >= cap - 0.25:
+    elif peak >= cap - 0.25:
         limit = "goal" if min(time_cap, freq_cap) >= target - 0.5 else ("frequency" if freq_cap <= time_cap else "time")
     else:
         limit = "ramp"
@@ -176,7 +183,7 @@ def build_skeleton_info(
     outlook.warnings = K.readiness_warnings(
         goal_km, experience, peak_km=peak, peak_long_km=peak_long, limit=limit, time_cap_km=time_cap, long_day_minutes=long_day_minutes,
         weekly_minutes=weekly_minutes, pace_s_km=pace_s, weeks_to_race=wtr, min_weeks_=outlook.min_weeks, ideal_low=low,
-        baseline_km=baseline_km if baseline_source == "stated" else 0.0, run_days=run_days)
+        baseline_km=baseline_km if baseline_source == "stated" else 0.0, run_days=run_days, units=units)
     return weeks, outlook
 
 

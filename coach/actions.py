@@ -93,6 +93,10 @@ class ActionsMixin:
             raise UserError("That workout isn't skipped.")
         if date.fromisoformat(w["date"]) < self.today():
             raise UserError("That day has already passed.")
+        other = next((o for o in self.db.get_workouts(date.fromisoformat(w["date"]), date.fromisoformat(w["date"]))
+                      if o["id"] != wid and o["status"] != "skipped"), None)
+        if other:
+            raise UserError(f"{date.fromisoformat(w['date']).strftime('%A')} now has “{other['title']}”. Move one of them to another day first.")
         self.db.update_workout(wid, status="planned", note="")
 
     def move_workout(self, wid: int, to: date) -> list[str]:

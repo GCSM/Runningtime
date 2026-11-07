@@ -85,7 +85,8 @@ def test_custom_distances_interpolate_and_clamp():
 
 
 def test_goal_names_and_assumed_baselines():
-    assert [K.goal_name(x) for x in (5, 8, 10, 21.0975, 30, 42.195)] == ["5K", "10K", "10K", "half marathon", "marathon", "marathon"]
+    assert [K.goal_name(x) for x in (5, 8, 10, 21.0975, 30, 42.195)] == ["5K", "8 km", "10K", "half marathon", "30 km", "marathon"]    # custom distances keep their own name
+    assert [K.goal_name(x) for x in (5.2, 10.4, 21.1, 21.0975, 22.0, 23.0, 41.9)] == ["5K", "10K", "half marathon", "half marathon", "half marathon", "23 km", "marathon"]
     assert K.assumed_baseline_km("beginner") < K.assumed_baseline_km("intermediate") < K.assumed_baseline_km("advanced")
     assert K.assumed_baseline_km("nonsense") == K.assumed_baseline_km("intermediate")
 
@@ -283,7 +284,7 @@ def test_every_marathon_block_peaks_its_long_run_near_32_km():
     weeks, _ = build_skeleton_info(plan_start=t, today=t, race_date=t + timedelta(weeks=26), goal_km=42.195, baseline_km=35, experience="intermediate",
                                    weekly_minutes=900, long_day_minutes=300, easy_pace_s_km=390, run_days=4)
     longs = [w.long_run_km for w in weeks if w.phase in ("base", "build", "peak")]
-    assert max(longs) <= 32 and longs[-1] >= 28 and sum(1 for x in longs if x >= 31) >= 2   # reaches 32 more than once, then tapers
+    assert max(longs) <= 32 and longs[-1] >= 28 and 1 <= sum(1 for x in longs if x >= 31) <= 2   # reaches 32 once or twice, in the last weeks, then tapers
 
 
 # ---- found by having the model write real plans from the real prompt (see docs/RESEARCH.md, "Live coach test") --------------
@@ -350,3 +351,15 @@ def test_recovery_weeks_cut_the_long_run_as_well_as_the_week(goal, level, days, 
         prior = max(x.long_run_km for x in w[max(0, i - 4):i])
         assert w[i].long_run_km <= 0.75 * prior + 0.01, (i, w[i].long_run_km, prior)
         assert w[i].long_run_km <= 0.55 * w[i].target_km or goal <= 10     # and no recovery week is mostly one long run
+
+
+def test_rules_do_not_jump_just_past_a_preset_distance():
+    """Red team: a 22.0 km goal got half-marathon rules but 22.1 km got marathon rules (long run 16 -> 27.5 km, taper 2 -> 3 weeks)."""
+    for lo, hi in ((21.9, 22.2), (10.4, 10.7), (5.4, 5.7), (41.0, 43.0)):
+        a, b = K.long_run_cap_km(lo, "intermediate"), K.long_run_cap_km(hi, "intermediate")
+        assert abs(a - b) <= 0.01 or abs(lo - hi) > 1.5, (lo, hi, a, b)                 # same size class across a tiny change in distance
+        assert K.taper_multipliers(lo) == K.taper_multipliers(hi) or abs(lo - hi) > 1.5
+    assert K.taper_multipliers(22.0) == K.taper_multipliers(21.0975) == K.taper_multipliers(22.1)
+    assert K._bucket(10.6) == 10.0 and K._bucket(25) == 21.0975 and K._bucket(30) == 42.195 and K._bucket(3) == 5.0 and K._bucket(60) == 42.195
+    caps = [K.long_run_cap_km(g, "intermediate") for g in (5, 10, 21.0975, 42.195)]
+    assert caps == sorted(caps)

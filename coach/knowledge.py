@@ -21,12 +21,15 @@ ANCHORS = (5.0, 10.0, 21.0975, 42.195)
 
 
 def _bucket(goal_km: float) -> float:
-    """Nearest anchor *at or above* the goal's size class: ≤5.5→5K, ≤10.5→10K, ≤22→half, else marathon."""
-    return 5.0 if goal_km <= 5.5 else 10.0 if goal_km <= 10.5 else 21.0975 if goal_km <= 22 else 42.195
+    """The preset distance (5K, 10K, half, marathon) a goal is closest to, measured in log-distance so 22 km is a half marathon and 30 km a marathon,
+    with no cliff just past a preset (rules that must be smooth, like peak volume, interpolate instead)."""
+    return min(ANCHORS, key=lambda a: abs(math.log(max(goal_km, 0.5) / a)))
 
 
 def goal_name(goal_km: float) -> str:
-    return {5.0: "5K", 10.0: "10K", 21.0975: "half marathon", 42.195: "marathon"}[_bucket(goal_km)]
+    name = {5.0: "5K", 10.0: "10K", 21.0975: "half marathon", 42.195: "marathon"}[_bucket(goal_km)]
+    anchor = _bucket(goal_km)
+    return name if abs(goal_km - anchor) / anchor <= 0.06 else f"{goal_km:g} km"
 
 
 # ---- 2. Weekly volume by goal and level: (low, target, high) peak km/week ------------------------------------------
@@ -298,16 +301,21 @@ def paces_from_easy(easy_s_km: float) -> dict[str, tuple[float, float]]:
             "interval": (t - 17,) * 2, "repetition": (t - 30,) * 2}  # type: ignore[return-value]
 
 
-def fmt_pace(s: float) -> str:
-    s = round(s)
-    return f"{s // 60}:{s % 60:02d}/km"
+def fmt_pace(s: float, units: str = "km") -> str:
+    s = round(s * (KM_PER_MI if units == "mi" else 1.0))
+    return f"{s // 60}:{s % 60:02d}/{'mi' if units == 'mi' else 'km'}"
 
 
-def pace_text(paces: dict[str, tuple[float, float]]) -> dict[str, str]:
+def pace_text(paces: dict[str, tuple[float, float]], units: str = "km") -> dict[str, str]:
     out = {}
     for k, (fast, slow) in paces.items():
-        out[k] = fmt_pace(fast) if abs(fast - slow) < 1 else f"{fmt_pace(fast)}–{fmt_pace(slow)}"
+        out[k] = fmt_pace(fast, units) if abs(fast - slow) < 1 else f"{fmt_pace(fast, units)}–{fmt_pace(slow, units)}"
     return out
+
+
+def fmt_dist(km: float, units: str = "km", decimals: int = 0) -> str:
+    """'42 km' or '26 mi': every distance written for the athlete goes through here (the plan itself is stored in km)."""
+    return f"{km / (KM_PER_MI if units == 'mi' else 1.0):.{decimals}f} {'mi' if units == 'mi' else 'km'}"
 
 
 # ---- 11. Returning from a layoff ----------------------------------------------------------------------------------
@@ -365,14 +373,15 @@ MIN_VOLUME_SHARE = 0.85                                                   # peak
 
 def readiness_warnings(goal_km: float, level: str, *, peak_km: float, peak_long_km: float, limit: str, time_cap_km: float,
                        long_day_minutes: int, weekly_minutes: int, pace_s_km: float, weeks_to_race: int, min_weeks_: int,
-                       ideal_low: float, baseline_km: float = 0.0, run_days: int = 0) -> list[str]:
+                       ideal_low: float, baseline_km: float = 0.0, run_days: int = 0, units: str = "km") -> list[str]:
     """Plain-language reasons the plan we can build would under-prepare the athlete, each with what to change."""
     out: list[str] = []
+    D = lambda km: fmt_dist(km, units)          # noqa: E731
     goal = goal_name(goal_km)
     need_long = MIN_PEAK_LONG_KM[_bucket(goal_km)]
     ceiling = min(time_cap_km, 10 ** 6)
     if baseline_km and ceiling < 0.9 * baseline_km:
-        out.append(f"Your available days and minutes only support about {ceiling:.0f} km a week, which is less than the {baseline_km:.0f} km you "
+        out.append(f"Your available days and minutes only support about {D(ceiling)} a week, which is less than the {D(baseline_km)} you "
                    f"say you run now. Add minutes or a run day, or lower your current weekly distance, so the plan matches what you can do.")
     if run_days and run_days < MIN_RUN_DAYS[_bucket(goal_km)]:
         out.append(f"A {goal} plan works best with at least {MIN_RUN_DAYS[_bucket(goal_km)]} run days a week; you chose {run_days}. "
@@ -380,27 +389,27 @@ def readiness_warnings(goal_km: float, level: str, *, peak_km: float, peak_long_
     if peak_long_km < need_long:
         mins = int(math.ceil(need_long * pace_s_km / 60 / 5) * 5)
         if long_day_minutes and long_day_minutes < mins:
-            out.append(f"Your longest run would only reach {peak_long_km:.0f} km because your long-run day has {long_day_minutes} minutes. "
-                       f"A {goal} needs a long run of at least {need_long:.0f} km, which takes about {mins} minutes at an easy pace. "
+            out.append(f"Your longest run would only reach {D(peak_long_km)} because your long-run day has {long_day_minutes} minutes. "
+                       f"A {goal} needs a long run of at least {D(need_long)}, which takes about {mins} minutes at an easy pace. "
                        f"Add time to your long-run day (aim for {mins}+ minutes) in Goal & schedule.")
         elif limit == "frequency":
-            out.append(f"Your longest run would only reach {peak_long_km:.0f} km; a {goal} plan needs at least {need_long:.0f} km. "
+            out.append(f"Your longest run would only reach {D(peak_long_km)}; a {goal} plan needs at least {D(need_long)}. "
                        f"With only the run days you chose, weekly distance (and so the long run) tops out too low. Adding a run day raises it.")
         else:
-            out.append(f"Your longest run would only reach {peak_long_km:.0f} km; a {goal} plan needs at least {need_long:.0f} km. "
+            out.append(f"Your longest run would only reach {D(peak_long_km)}; a {goal} plan needs at least {D(need_long)}. "
                        f"There isn't enough time or build-up before the race to get there safely.")
     if peak_km < ideal_low * MIN_VOLUME_SHARE:
         if limit == "frequency":
-            out.append(f"With the run days you chose, weekly distance tops out at {peak_km:.0f} km; published {level} {goal} plans peak around "
-                       f"{ideal_low:.0f}+ km. Adding a run day would raise the ceiling without making each run huge.")
+            out.append(f"With the run days you chose, weekly distance tops out at {D(peak_km)}; published {level} {goal} plans peak around "
+                       f"{D(ideal_low)}+. Adding a run day would raise the ceiling without making each run huge.")
         elif limit == "time":
             mins = int(math.ceil(ideal_low * MIN_VOLUME_SHARE * pace_s_km / 60 / 10) * 10)
-            out.append(f"Your running time ({weekly_minutes} min/week, about {time_cap_km:.0f} km) caps the build at {peak_km:.0f} km/week; "
-                       f"published {level} {goal} plans peak around {ideal_low:.0f}+ km. You'd need roughly {mins} minutes a week "
+            out.append(f"Your running time ({weekly_minutes} min/week, about {D(time_cap_km)}) caps the build at {D(peak_km)}/week; "
+                       f"published {level} {goal} plans peak around {D(ideal_low)}+. You'd need roughly {mins} minutes a week "
                        f"(more days or longer runs) to train properly.")
         else:
-            out.append(f"There are only {weeks_to_race} weeks to the race, so the build tops out at {peak_km:.0f} km/week "
-                       f"(published {level} {goal} plans peak around {ideal_low:.0f}+). {min_weeks_}+ weeks is usual; consider a later race.")
+            out.append(f"There are only {weeks_to_race} weeks to the race, so the build tops out at {D(peak_km)}/week "
+                       f"(published {level} {goal} plans peak around {D(ideal_low)}+). {min_weeks_}+ weeks is usual; consider a later race.")
     if out:
         out.append(f"This is the most your current schedule supports, and it won't fully prepare you for a {goal}. "
                    f"Fix the points above for a proper build.")
@@ -429,20 +438,21 @@ class VolumeOutlook:
     def to_dict(self) -> dict:
         return {k: (round(v, 1) if isinstance(v, float) else v) for k, v in self.__dict__.items()}
 
-    def athlete_text(self, goal: str, level: str) -> str:
+    def athlete_text(self, goal: str, level: str, units: str = "km") -> str:
+        D = lambda km: fmt_dist(km, units)          # noqa: E731
         src = {
             "strava": "your recent Strava runs",
             "stated": "the weekly distance you entered",
             "assumed": f"an assumed typical week for a {level} runner (you didn't tell me your current volume — update it in Goal & schedule if this is off)",
             "restart": "a cautious restart, because there's been very little recent running",
         }[self.baseline_source]
-        text = (f"Volume: starting at about {self.start_km:.0f} km/week (based on {src}) and building to about {self.peak_km:.0f} km/week. "
-                f"Published {level} {goal} plans typically peak around {self.ideal_low:.0f}–{self.ideal_high:.0f} km/week.")
+        text = (f"Volume: starting at about {D(self.start_km)}/week (based on {src}) and building to about {D(self.peak_km)}/week. "
+                f"Published {level} {goal} plans typically peak around {D(self.ideal_low)[:-3]}–{D(self.ideal_high)}/week.")
         if self.limit == "time":
-            text += (f" Your available running time (about {self.time_cap_km:.0f} km/week at an easy pace) is what limits the build; "
+            text += (f" Your available running time (about {D(self.time_cap_km)}/week at an easy pace) is what limits the build; "
                      f"adding minutes on your running days would allow a stronger plan.")
         elif self.limit == "frequency":
-            text += (f" With {self.run_days} runs a week, going much beyond {self.freq_cap_km:.0f} km would mean very long runs on every run day, "
+            text += (f" With {self.run_days} runs a week, going much beyond {D(self.freq_cap_km)} would mean very long runs on every run day, "
                      f"so the build stops there. Adding another run day would allow a bigger, safer build.")
         elif self.limit == "ramp":
             text += (f" There aren't enough weeks to reach that range safely from where you are now, so this is as far as a steady build can go "

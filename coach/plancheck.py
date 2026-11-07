@@ -3,6 +3,8 @@ under-delivering plan: only allowed days, no day overlap, time budgets, weekly v
 rules researched in docs/RESEARCH.md (hard/easy spacing, quality-session limits, long-run caps and growth)."""
 from __future__ import annotations
 
+import math
+import re
 from datetime import date, timedelta
 
 from . import knowledge as K
@@ -13,19 +15,33 @@ VOLUME_SLACK = 1.10  # allow 10% over the weekly target before scaling down
 VOLUME_FLOOR = 0.85  # a week below this share of its target gets topped up (if the schedule allows)
 TOP_UP_TO = 0.95     # …up to this share of the target
 EASY_RUN_GROWTH = 1.5  # an easy run is never stretched beyond 1.5× what was planned
-INJURY_WORDS = ("injur", "pain", "hurt", "sore", "strain", "sprain", "tight", "ache", "swollen", "stress fracture", "shin splint", "tendin", "niggle")
+_BODY = r"(?:knee|ankle|achilles|calf|calves|shin|hip|hamstring|quad|quads|thigh|foot|feet|heel|back|groin|glute|it band|itb|arch|toe|hip flexor|plantar)"
+_PAIN = re.compile(
+    r"\b(?:injur(?:y|ed|ies)|pain(?:ful)?|hurts?|hurting|sore(?:ness)?|strain(?:ed)?|sprain(?:ed)?|swollen|swelling|stress fracture|shin splints?|tendin(?:itis|opathy)|niggles?|limp(?:ing)?)\b"
+    rf"|\b(?:tight|ache|aches|aching)\b(?=[^.;,]{{0,25}}\b{_BODY}\b)|\b{_BODY}\b[^.;,]{{0,25}}\b(?:tight|aches?|aching)\b", re.I)
+_NEGATED = re.compile(r"\b(?:no|not|never|without|zero|free of|nothing|isn'?t|aren'?t|wasn'?t|weren'?t|don'?t|doesn'?t|didn'?t)\b[^.;!?]{0,18}$", re.I)
+_PAIN_FREE = re.compile(r"\b(?:pain|injury)[- ]free\b", re.I)
 
 
 def mentions_pain(text: str) -> bool:
-    t = (text or "").lower()
-    return any(w in t for w in INJURY_WORDS)
+    """Does an athlete's note report pain or injury? Whole words only (not "painting", "headache", "tight schedule"), and "no pain" or
+    "pain-free" don't count."""
+    t = _PAIN_FREE.sub("", text or "")
+    for m in _PAIN.finditer(t):
+        if not _NEGATED.search(t[max(0, m.start() - 30):m.start()]):
+            return True
+    return False
 
 
 def _f(v, default=None):
+    """A finite number from whatever the model sent, else `default`. Booleans, NaN and infinity are not numbers."""
+    if isinstance(v, bool):
+        return default
     try:
-        return float(v)
+        x = float(v)
     except (TypeError, ValueError):
         return default
+    return x if math.isfinite(x) else default
 
 
 def sanitize(
@@ -40,12 +56,17 @@ def sanitize(
     level: str = "intermediate",
     longest_recent_km: float = 0.0,
     suppress_quality_until: date | None = None,
+    done_quality: dict[date, int] | None = None,
 ) -> tuple[list[dict], list[str]]:
     notes: list[str] = []
+    done_quality = done_quality or {}
     allowed_weeks = {w.week_start: w for w in weeks}
     seen: set[str] = set()
     clean: list[dict] = []
-    for r in raw:
+    for r in raw if isinstance(raw, list) else []:
+        if not isinstance(r, dict):
+            notes.append("dropped an entry that wasn't a workout")
+            continue
         try:
             d = date.fromisoformat(str(r.get("date")))
         except ValueError:
@@ -70,17 +91,32 @@ def sanitize(
             wtype = "easy"
         dist = _f(r.get("distance_km"))
         dur = _f(r.get("duration_min"))
-        if dist is None and dur is None:
-            notes.append(f"{iso}: no distance or duration")
+        if dist is not None and dist <= 0 and wtype != "cross":
+            dist = None                                   # "0 km" or a negative distance is no distance
+        if dur is not None and dur <= 0:
+            dur = None
+        if dist is None and dur is None and not is_race:
+            notes.append(f"{iso}: no usable distance or duration")
             continue
-        if dist is None:
+        if dist is None and dur is not None:
             dist = dur * 60 / pace_s_km if wtype != "cross" else 0.0
-        if dur is None:
+        if dur is None and dist is not None:
             dur = dist * pace_s_km / 60
+        if is_race:
+            # The race is the goal distance, whatever the model wrote (a wrong figure would also distort race week's volume).
+            dist = profile.goal_km
+            dur = (profile.goal_time_s / 60) if profile.goal_time_s else dist * pace_s_km / 60
+        elif wtype != "cross" and dist and dur:
+            implied = dur * 60 / dist
+            lo, hi = (0.55, 1.35) if wtype in K.QUALITY_TYPES else (0.7, 1.8)
+            if not (lo * pace_s_km <= implied <= hi * pace_s_km):
+                fixed = dist * pace_s_km / 60                  # keep the distance (it drives the week's volume), recompute the time
+                notes.append(f"{iso}: {dist:.1f} km in {dur:.0f} min isn't a believable pace; time corrected to {fixed:.0f} min")
+                dur = fixed
         if not is_race and av and av.minutes and dur > av.minutes + 1:
-            s = av.minutes / dur
+            s_ = av.minutes / dur
             notes.append(f"{iso}: scaled to fit {av.minutes} min available")
-            dist, dur = dist * s, dur * s
+            dist, dur = dist * s_, dur * s_
         seen.add(iso)
         clean.append({
             "date": iso, "week_start": monday(d).isoformat(), "type": wtype,
@@ -110,12 +146,27 @@ def sanitize(
         notes.append(f"{w['date']}: {w['type']} changed to an easy run ({why})")
         w.update(type="easy", title="Easy run", description="Easy, conversational pace.", pace_guidance="RPE 3–4: you could hold a conversation")
 
+    all_sorted = sorted(clean, key=lambda w: w["date"])
+    # The long run lives on the athlete's long-run day, once a week, and not in the last days before the race.
+    for ws, items in by_week.items():
+        longs = [w for w in items if w["type"] == "long"]
+        for w in longs:
+            d = date.fromisoformat(w["date"])
+            if DAYS[d.weekday()] != profile.long_run_day:
+                downgrade(w, f"your long run belongs on {profile.long_run_day.title()}"); continue
+            if 0 <= (profile.race_date - d).days <= 5:
+                downgrade(w, "no long run in the last days before the race"); continue
+        longs = [w for w in items if w["type"] == "long"]
+        for extra in sorted(longs, key=lambda w: -w["distance_km"])[1:]:
+            downgrade(extra, "one long run a week")
+
+    kept_all: list[dict] = []                              # hard sessions kept so far, across weeks (spacing doesn't reset on Monday)
     for ws, items in by_week.items():
         wk = allowed_weeks.get(date.fromisoformat(ws))
         if wk is None:
             continue
-        limit = K.quality_limit(level, wk.phase, wk.recovery, run_days)
-        kept: list[dict] = []
+        limit = K.quality_limit(level, wk.phase, wk.recovery, run_days) - done_quality.get(date.fromisoformat(ws), 0)
+        kept_this_week = 0
         for w in items:
             if w["type"] not in K.QUALITY_TYPES:
                 continue
@@ -124,14 +175,18 @@ def sanitize(
                 downgrade(w, "you mentioned pain or injury, so no hard sessions for now"); continue
             if wk.recovery:
                 downgrade(w, "recovery week"); continue
-            near_long = any(o["type"] == "long" and abs((date.fromisoformat(o["date"]) - d).days) == 1 for o in items)
+            if 0 <= (profile.race_date - d).days <= 2:
+                downgrade(w, "keep the last days before the race easy"); continue
+            near_long = any(o["type"] == "long" and abs((date.fromisoformat(o["date"]) - d).days) == 1 for o in all_sorted)
             if near_long:
                 downgrade(w, "hard sessions need an easy day either side of the long run"); continue
-            if any(abs((date.fromisoformat(k["date"]) - d).days) < 2 for k in kept):
+            if any(abs((date.fromisoformat(k["date"]) - d).days) < 2 for k in kept_all):
                 downgrade(w, "hard sessions need at least one easy day between them"); continue
-            if len(kept) >= limit:
-                downgrade(w, f"at most {limit} hard session{'s' * (limit != 1)} this week at your level and phase"); continue
-            kept.append(w)
+            if kept_this_week >= max(limit, 0):
+                downgrade(w, f"at most {K.quality_limit(level, wk.phase, wk.recovery, run_days)} hard session"
+                             f"{'s' * (K.quality_limit(level, wk.phase, wk.recovery, run_days) != 1)} this week at your level and phase"); continue
+            kept_this_week += 1
+            kept_all.append(w)
 
     # No single weekday run above its time cap: bigger weeks come from more run days, not from huge runs.
     for w in clean:

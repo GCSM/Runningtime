@@ -24,6 +24,9 @@ Hard rules (code enforces these and will rewrite anything that breaks them):
 - Hard sessions (type tempo or intervals): at most max_quality_sessions in the week, at least one easy day between them,
   never the day before or after the long run, none in a recovery week. Strides added to an easy run do not count.
 
+Units: `athlete.units`/`units` says whether the athlete thinks in kilometres or miles. All numeric fields in your answer (distance_km, duration_min)
+stay in kilometres and minutes, but titles, descriptions and pace_guidance are read by the athlete: if units is "mi", write distances in miles
+("Tempo 5 mi", "3 x 1 mi") and use the *_per_mile paces; if "km", use kilometres and the *_per_km paces. Never mix them in one text.
 Workout types are fixed, so use them consistently: hill repeats and fartlek are "intervals"; any block at marathon or half-marathon pace
 (including taper sessions at goal pace) is "tempo"; a shakeout or strides run is "easy". Both count toward max_quality_sessions. A long run
 with a pace finish stays "long" and does not count as hard. Midweek "medium-long" runs from the menu only fit if the day's minutes allow.
