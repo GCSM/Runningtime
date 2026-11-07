@@ -106,15 +106,15 @@ def frequency_cap_km(level: str, goal_km: float, run_days: int, pace_s_km: float
     lv = _level(level)
     avg_min = (run_cap_minutes(lv, "easy", goal_km) + run_cap_minutes(lv, "tempo", goal_km)) / 2
     others = max(run_days - 1, 1)
-    share = long_run_share(100.0, run_days, goal_km)
+    share = {42: 0.40, 21: 0.35}.get(int(_bucket(goal_km)), 0.30)                # the *standard* long-run share, so the ceiling stays modest
     return others * avg_min * 60 / pace_s_km / (1 - share)
 
 
 # ---- 4. Long runs -------------------------------------------------------------------------------------------------
 LONG_RUN_CAP_KM = {  # peak long run by event and level; upper end = claude-coach "Long Run Targets by Event"
-    "beginner":     {5.0: 8, 10.0: 12, 21.0975: 16, 42.195: 28},
+    "beginner":     {5.0: 8, 10.0: 12, 21.0975: 16, 42.195: 32},
     "intermediate": {5.0: 11, 10.0: 15, 21.0975: 20, 42.195: 32},
-    "advanced":     {5.0: 12, 10.0: 16, 21.0975: 22, 42.195: 35},
+    "advanced":     {5.0: 12, 10.0: 16, 21.0975: 22, 42.195: 32},       # every marathon block peaks its long run near 32 km (20 miles)
 }
 LONG_RUN_MAX_MIN = 150          # Daniels, as summarised: ≤150 min
 LONG_RUN_MAX_MIN_MARATHON = 300  # 5 h: a time limit must not stop slower runners covering the distance (Higdon novice 20-miler ≈ 4 h+); the km caps (28–35) are the real limit
@@ -131,7 +131,9 @@ def long_run_share(week_km: float, run_days: int, goal_km: float = 10.0) -> floa
     """
     b = _bucket(goal_km)
     if b >= 42:
-        return 0.40
+        # The ~32 km peak long run is the anchor of a marathon block. On 4 run days it is most of the week (Higdon Novice 1: a 20-miler in a
+        # ~31-mile week), on 5+ days about 40%.
+        return 0.42 if run_days >= 5 else 0.60
     if b >= 21:
         return 0.35
     if run_days <= 3:
@@ -327,7 +329,7 @@ def workout_menu(goal_km: float, level: str) -> dict[str, list[str]]:
 
 
 # ---- Is the plan we can build actually enough for the goal? ------------------------------------------------------
-MIN_PEAK_LONG_KM = {5.0: 5.0, 10.0: 8.0, 21.0975: 13.0, 42.195: 25.0}   # shortest peak long run that still prepares for the event
+MIN_PEAK_LONG_KM = {5.0: 5.0, 10.0: 8.0, 21.0975: 13.0, 42.195: 28.0}   # shortest peak long run that still prepares for the event
 MIN_VOLUME_SHARE = 0.85                                                   # peak weekly km below 85% of the published low end is flagged
 
 

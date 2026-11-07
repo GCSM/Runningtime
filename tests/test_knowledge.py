@@ -116,7 +116,7 @@ def test_long_run_caps_follow_claude_coach_event_targets():
 def test_long_run_share_depends_on_distance_and_run_days():
     assert K.long_run_share(20, 3, 5) == 0.40          # Higdon Novice 5K: long run ≈ 37% with 3 runs
     assert K.long_run_share(40, 5, 10) == 0.30 and K.long_run_share(70, 5, 10) == 0.25
-    assert K.long_run_share(60, 5, 21.0975) == 0.35 and K.long_run_share(70, 5, 42.195) == 0.40
+    assert K.long_run_share(60, 5, 21.0975) == 0.35 and K.long_run_share(70, 5, 42.195) == 0.42 and K.long_run_share(60, 4, 42.195) == 0.60   # 4-day marathon: the 32 km long run is most of the week
 
 
 def test_long_run_km_is_bounded_by_every_limit():
@@ -124,8 +124,9 @@ def test_long_run_km_is_bounded_by_every_limit():
     assert K.long_run_km(37, 5, "intermediate", 4, 75, pace) == 11.0                           # event cap
     assert K.long_run_km(37, 5, "intermediate", 4, 30, pace) == 4.5                            # that day's minutes
     assert K.long_run_km(20, 5, "beginner", 3, 120, pace) == 8.0                               # 40% of 20 = 8 = beginner cap
-    assert K.long_run_km(74, 42.195, "intermediate", 5, 300, pace) == 29.5                     # 40% of 74
-    assert K.long_run_km(120, 42.195, "advanced", 6, 400, pace) <= 35
+    assert K.long_run_km(74, 42.195, "intermediate", 5, 300, pace) == 31.0                     # 42% of 74
+    assert K.long_run_km(60, 42.195, "intermediate", 4, 300, pace) == 32.0                     # 4 days: 60% of 60 = 36, capped at 32
+    assert K.long_run_km(120, 42.195, "advanced", 6, 400, pace) == 32.0                        # every marathon block peaks near 32 km
 
 
 # ---- taper, plan length, hard work (RESEARCH.md §5–7) ---------------------------------------------------------------
@@ -214,13 +215,13 @@ def test_short_time_marathon_is_flagged_with_the_fix():
     o = _mk_outlook()                                   # 4 days, 240 min/week, 90-minute long-run day: a 40 km peak and a 15 km long run
     assert o.peak_km < 42 and o.peak_long_km <= 15
     text = " ".join(o.warnings)
-    assert "150+ minutes" in text and "310 minutes a week" in text and "won't fully prepare" in text
+    assert "170+ minutes" in text and "310 minutes a week" in text and "won't fully prepare" in text
     assert "long-run day has 90 minutes" in text
 
 
 def test_a_properly_scheduled_marathon_has_no_warnings():
-    o = _mk_outlook(mins=420, long_min=180, days=5, weeks=24, base=30)
-    assert o.peak_long_km >= 25 and o.peak_km >= 60 and o.warnings == []
+    o = _mk_outlook(mins=420, long_min=210, days=5, weeks=24, base=30)
+    assert o.peak_long_km >= 28 and o.peak_km >= 60 and o.warnings == []
 
 
 def test_too_few_weeks_is_flagged_even_with_plenty_of_time():
@@ -237,13 +238,13 @@ def test_max_long_lets_a_slow_marathoner_reach_a_real_long_run_but_km_caps_still
     slow = 450.0                                                   # 7:30/km easy: a ~5 h marathon
     assert K.long_run_km(90, 42.195, "intermediate", 5, 300, slow) == 32.0          # open-ended: the km cap binds
     assert K.long_run_km(90, 42.195, "intermediate", 5, 210, slow) == 28.0
-    assert K.long_run_km(110, 42.195, "advanced", 6, 240, 330.0) == 35.0            # fast runner: capped by distance, not time
+    assert K.long_run_km(110, 42.195, "advanced", 6, 240, 330.0) == 32.0            # fast runner: capped by distance, not time
     assert K.long_run_km(70, 21.0975, "intermediate", 5, 240, slow) <= 20.0         # half marathon cap unchanged
 
 
 def test_a_six_hour_marathoner_can_still_cover_the_full_long_run():
     pace = 540.0                                                     # 9:00/km easy
-    assert K.long_run_km(90, 42.195, "beginner", 5, 300, pace) == 28.0      # time allows 33 km; the beginner distance cap (28 km) binds
+    assert K.long_run_km(90, 42.195, "beginner", 5, 300, pace) == 32.0      # time allows 33 km; the 32 km marathon cap binds
     assert K.long_run_km(90, 42.195, "intermediate", 5, 300, pace) == 32.0  # 300 min = 33.3 km, capped at 32
     assert K.long_run_km(90, 42.195, "intermediate", 5, 240, pace) == 26.5  # a 240-minute day would have cost 5.5 km
 
@@ -268,3 +269,18 @@ def test_frequency_cap_grows_with_run_days_and_marathon_peak_follows_it():
 def test_the_reported_plan_shape_is_gone_no_78_km_on_four_runs():
     o = _mk_outlook(weeks=26, mins=420, long_min=240, days=4, base=35)
     assert o.peak_km <= 66                                                              # was 78 km on 4 runs: ~19.5 km per run, 3 of 4 runs hard
+
+
+def test_every_marathon_block_peaks_its_long_run_near_32_km():
+    for level, days, base in [("intermediate", 4, 35), ("intermediate", 5, 35), ("advanced", 5, 40), ("advanced", 6, 40)]:
+        o = _mk_outlook(weeks=26, mins=900, long_min=300, days=days, base=base, exp=level)
+        assert 31 <= o.peak_long_km <= 32, (level, days, o.peak_long_km)
+    assert max(K.LONG_RUN_CAP_KM[lv][42.195] for lv in K.LEVELS) == min(K.LONG_RUN_CAP_KM[lv][42.195] for lv in K.LEVELS) == 32
+    # …and the long run grows to it gradually (never more than +10% / +2.5 km over the previous 4 weeks)
+    from datetime import date, timedelta
+    from coach.skeleton import build_skeleton_info
+    t = date(2026, 11, 2)
+    weeks, _ = build_skeleton_info(plan_start=t, today=t, race_date=t + timedelta(weeks=26), goal_km=42.195, baseline_km=35, experience="intermediate",
+                                   weekly_minutes=900, long_day_minutes=300, easy_pace_s_km=390, run_days=4)
+    longs = [w.long_run_km for w in weeks if w.phase in ("base", "build", "peak")]
+    assert max(longs) <= 32 and longs[-1] >= 28 and sum(1 for x in longs if x >= 31) >= 2   # reaches 32 more than once, then tapers
