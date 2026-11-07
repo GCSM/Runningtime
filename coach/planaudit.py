@@ -80,7 +80,7 @@ def audit_shape(weeks: list[Week], goal_km: float, level: str) -> list[str]:
     return v
 
 
-def audit_plan(workouts: list[dict], profile: Profile, weeks: list[Week], today: date, *, run_cap_check: bool = True) -> list[str]:
+def audit_plan(workouts: list[dict], profile: Profile, weeks: list[Week], today: date, *, run_cap_check: bool = True, check_volume: bool = True) -> list[str]:
     """Rule violations in a day-by-day plan (model-written or code-written). Independent of the app's sanitizer."""
     v: list[str] = []
     sk = {w.week_start.isoformat(): w for w in weeks}
@@ -108,7 +108,7 @@ def audit_plan(workouts: list[dict], profile: Profile, weeks: list[Week], today:
         if not s:
             continue
         km = sum(w["distance_km"] for w in items)
-        if s.phase != "race" and s.target_km and not (0.85 <= km / s.target_km <= 1.12) and date.fromisoformat(ws) >= monday(today) + timedelta(days=7):
+        if check_volume and s.phase != "race" and s.target_km and not (0.85 <= km / s.target_km <= 1.12) and date.fromisoformat(ws) >= monday(today) + timedelta(days=7):
             v.append(f"week {ws}: {km:.1f} km vs target {s.target_km}")
         q = [w for w in items if w["type"] in K.QUALITY_TYPES]
         if len(q) > K.quality_limit(profile.experience, s.phase if s.phase != "race" else "taper", s.recovery, sum(a.available for a in profile.availability.values())):

@@ -45,7 +45,19 @@ def weekly_km(activities: list[dict]) -> dict[date, float]:
     return dict(totals)
 
 
-def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill_km: float = 0.0) -> float | None:
+def credit_plan(totals: dict[date, float], targets: dict[date, float] | None, tolerance: float = 0.9) -> dict[date, float]:
+    """A week in which the athlete did at least `tolerance` of the plan's target counts as having done the target: delivered volume is a few
+    percent under target by design (rounding, top-up limits), and re-basing on the delivered figure every Monday would shave that off again and
+    again until the plan lagged well behind its own progression."""
+    out = dict(totals)
+    for ws, t in (targets or {}).items():
+        a = totals.get(ws, 0.0)
+        if t > 0 and a >= tolerance * t:
+            out[ws] = max(a, t)
+    return out
+
+
+def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill_km: float = 0.0, targets: dict[date, float] | None = None) -> float | None:
     """Mean weekly km over the last `weeks` *complete* weeks, or None if there are no complete weeks of history.
 
     Weeks before the athlete's first recorded run are *unknown*, not zero (a runner who connected Strava two weeks ago hasn't stopped
@@ -54,7 +66,7 @@ def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill
     """
     if not activities:
         return None
-    totals = weekly_km(activities)
+    totals = credit_plan(weekly_km(activities), targets)
     this_wk = monday(today)
     first_wk = monday(min(date.fromisoformat(a["date"]) for a in activities))
     if first_wk >= this_wk:
@@ -64,7 +76,10 @@ def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill
     top = max(vals)
     if weeks >= 4 and unknown == 0 and top > 0 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
         vals = sorted(vals, reverse=True)[:2]         # the two best weeks represent current capability; one step-back week doesn't count against it
-    return sum(vals) / len(vals)
+    base = sum(vals) / len(vals)
+    # The most recent complete week is the best evidence of where the athlete is NOW: after a break the older zero weeks would otherwise drag
+    # the average down (a runner back to 25 km a week after two weeks off is not a 13 km runner), and a steadily building runner's mean lags.
+    return max(base, totals.get(this_wk - timedelta(weeks=1), 0.0) if this_wk - timedelta(weeks=1) >= first_wk else 0.0)
 
 
 def easy_pace_s_km(activities: list[dict], today: date, days: int = 28) -> float | None:

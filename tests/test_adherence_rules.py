@@ -79,22 +79,25 @@ def weeks_of_runs(*kms, end=TODAY):
 
 def test_baseline_is_the_mean_of_the_last_four_complete_weeks():
     assert A.recent_baseline_km(weeks_of_runs(20, 20, 20, 20), TODAY) == 20.0
-    assert A.recent_baseline_km(weeks_of_runs(10, 20, 30, 40), TODAY) == pytest.approx(35.0)       # steady enough: the two best weeks represent the build
+    assert A.recent_baseline_km(weeks_of_runs(10, 20, 30, 40), TODAY) == pytest.approx(40.0)       # a rising build: the latest week is where the athlete is now
     assert A.recent_baseline_km([], TODAY) is None
 
 
 def test_one_low_week_among_steady_ones_is_ignored_so_a_plan_does_not_forget_its_progression():
-    assert A.recent_baseline_km(weeks_of_runs(36, 36, 26, 37), TODAY) == pytest.approx(36.5)       # a step-back week
+    assert A.recent_baseline_km(weeks_of_runs(36, 36, 26, 37), TODAY) == pytest.approx(37.0)       # a step-back week doesn't pull it down (latest week 37)
+    assert A.recent_baseline_km(weeks_of_runs(36, 38, 36, 26), TODAY) == pytest.approx(37.0)       # …and a step-back just finished leaves it at the two best (36, 38)
     assert A.recent_baseline_km(weeks_of_runs(40, 10, 40, 10), TODAY) == pytest.approx(25.0)       # genuinely irregular: plain mean
     assert A.recent_baseline_km(weeks_of_runs(40, 20, 40, 10), TODAY) == pytest.approx(40.0)       # 3 of 4 weeks at least half the best: one off week ignored
     assert A.recent_baseline_km(weeks_of_runs(40, 19, 40, 10), TODAY) == pytest.approx(27.25)      # only 2 of 4: not steady, plain mean
-    assert A.recent_baseline_km(weeks_of_runs(0, 0, 0, 12), TODAY) == pytest.approx(3.0)           # a layoff stays a layoff: plain mean
+    assert A.recent_baseline_km(weeks_of_runs(0, 0, 0, 12), TODAY) == pytest.approx(12.0)          # just restarted after a layoff: the latest week, not the average of the break
+    assert A.recent_baseline_km(weeks_of_runs(12, 0, 0, 0), TODAY) == pytest.approx(3.0)           # still off: plain mean
+    assert A.recent_baseline_km(weeks_of_runs(40, 40, 0, 25), TODAY) == pytest.approx(40.0)       # back at 25 after a week off: still a 40 km runner's capacity
 
 
 def test_weeks_before_the_first_run_are_unknown_not_zero():
     two_weeks = weeks_of_runs(30, 30)                                                              # Strava only goes back two weeks
     assert A.recent_baseline_km(two_weeks, TODAY, fill_km=40.0) == pytest.approx(35.0)              # the two unknown weeks count as the stated 40
-    assert A.recent_baseline_km(two_weeks, TODAY, fill_km=0.0) == pytest.approx(15.0)               # a true beginner: plain mean of [30, 30, 0, 0]
+    assert A.recent_baseline_km(two_weeks, TODAY, fill_km=0.0) == pytest.approx(30.0)               # stated 0 and 30 km in the last complete week: they are running 30 now
     assert A.recent_baseline_km([act(1, TODAY, 10)], TODAY) is None                                 # only this (incomplete) week so far: no complete week to average
     # zeros AFTER the first run are real
     after = [act(1, monday(TODAY) - timedelta(weeks=4) + timedelta(days=1), 30)]

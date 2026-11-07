@@ -89,7 +89,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
     def _baseline(self, p: Profile, acts: list[dict], *, trust_actuals: bool) -> tuple[float, str]:
         """How much the athlete currently runs per week, and where that number came from. Never silently 0."""
         today = self.today()
-        real = adherence.recent_baseline_km(acts, today, fill_km=p.baseline_km)   # mean of last 4 complete weeks (weeks before the first run count as the stated volume); None if no complete week yet
+        real = adherence.recent_baseline_km(acts, today, fill_km=p.baseline_km, targets={date.fromisoformat(w["week_start"]): w["target_km"] for w in self.db.get_weeks()})   # mean of last 4 complete weeks (weeks before the first run count as the stated volume); None if no complete week yet
         last = max((date.fromisoformat(a["date"]) for a in acts), default=None)
         days_off = (today - last).days if last else 0
         if last is not None and days_off >= 10:
@@ -158,6 +158,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             plan_start=plan_start, today=today, race_date=p.race_date, goal_km=p.goal_km, baseline_km=base_km,
             experience=p.experience, weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes,
             easy_pace_s_km=pace, run_days=run_days, baseline_source=source, units=p.units,
+            no_stepback_before=(today + timedelta(weeks=3)) if source == "restart" else (date.fromisoformat(self.db.kv_get("restart_until")) if self.db.kv_get("restart_until") else None),
             longest_recent_km=max((a["distance_m"] / 1000 for a in acts if a["date"] >= (today - timedelta(days=28)).isoformat()), default=0.0),
             other_day_minutes=[a.minutes for d, a in p.availability.items() if a.available and d != p.long_run_day],
         )
@@ -291,6 +292,8 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             self.db.log("review", f"The coach re-planned only part of the plan; the weeks starting {', '.join(gaps[:6])} were kept as they were.")
         workouts = [w for w in workouts if w["week_start"] not in keep]       # a week we keep is kept whole, never a mix of old and new
         self.db.replace_plan_from(self.today(), [w.to_row() for w in inp.weeks if w.week_start >= monday(today)], workouts, keep_weeks=keep)
+        if inp.outlook.baseline_source == "restart":
+            self.db.kv_set("restart_until", (today + timedelta(weeks=3)).isoformat())            # remembered for the next Monday's review: no step-back while returning
         self.refresh_statuses()
         text = inp.outlook.athlete_text(K.goal_name(p.goal_km), p.experience, p.units)
         self.db.kv_set("volume_outlook", {**inp.outlook.to_dict(), "text": text, "level": p.experience,

@@ -59,6 +59,7 @@ def build_skeleton_info(
     longest_recent_km: float = 0.0,
     other_day_minutes: list[int] | None = None,
     units: str = "km",
+    no_stepback_before: date | None = None,
 ) -> tuple[list[Week], VolumeOutlook]:
     """Weeks from monday(today) to the race week, plus a description of the volume plan. Phases are positioned over the
     whole plan (plan_start..race); the ramp starts from `baseline_km` at the current week."""
@@ -111,6 +112,8 @@ def build_skeleton_info(
     # not a step-back right before the biggest weeks. Absolute week indexes, not 'relative to the current week': a review on the Monday of a
     # step-back week must keep it a step-back week, and the schedule doesn't shift from one review to the next.
     recov = {i for i in train if n_train >= K.MIN_WEEKS_FOR_RECOVERY and i >= 2 and i <= n_train - 3 and (n_train - 3 - i) % K.RECOVERY_EVERY == 0}
+    if no_stepback_before:
+        recov = {i for i in recov if start + timedelta(weeks=i) >= no_stepback_before}      # coming back from a break: the restart already is a step-back
     m = sum(1 for i in train if i not in recov)                  # number of build (non-recovery) weeks from here
     mid = first > 0                                              # a mid-plan rebuild: the baseline is what was ALREADY achieved, so this week steps up from it
     off = 1 if mid else 0

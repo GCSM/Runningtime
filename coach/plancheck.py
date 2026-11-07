@@ -202,6 +202,13 @@ def sanitize(
             downgrade(extra, "one long run a week")
 
     kept_all: list[dict] = []                              # hard sessions kept so far, across weeks (spacing doesn't reset on Monday)
+    paced_long_days = [date.fromisoformat(x["date"]) for x in all_sorted if is_paced_long(x)]      # long runs with a pace finish are hard efforts too
+
+    def crowds_a_week(d: date) -> bool:
+        """Would a hard effort on `d` make three hard efforts inside some 7-day span (Sunday, Thursday and Saturday is too much even if no
+        calendar week holds more than two)?"""
+        days = sorted(paced_long_days + [date.fromisoformat(k["date"]) for k in kept_all] + [d])
+        return any((days[i + 2] - days[i]).days <= 6 for i in range(len(days) - 2))
     for ws, items in by_week.items():
         wk = allowed_weeks.get(date.fromisoformat(ws))
         if wk is None:
@@ -225,6 +232,8 @@ def sanitize(
                 downgrade(w, "hard sessions need an easy day either side of the long run"); continue
             if any(abs((date.fromisoformat(k["date"]) - d).days) < 2 for k in kept_all):
                 downgrade(w, "hard sessions need at least one easy day between them"); continue
+            if crowds_a_week(d):
+                downgrade(w, "no more than two hard efforts in any 7 days"); continue
             if kept_this_week >= max(limit, 0):
                 downgrade(w, f"at most {K.quality_limit(level, wk.phase, wk.recovery, run_days)} hard session"
                              f"{'s' * (K.quality_limit(level, wk.phase, wk.recovery, run_days) != 1)} this week at your level and phase"); continue
