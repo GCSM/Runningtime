@@ -13,6 +13,7 @@ from .db import DB
 from .actions import ActionsMixin
 from .ics import build_calendar
 from .progress_views import ProgressMixin
+from .execution_service import ExecutionMixin
 from .errors import UserError  # noqa: F401  (re-exported for callers)
 from .runview import build_run_view
 from .strava import StravaError
@@ -40,7 +41,7 @@ class PlanInputs:
         return K.pace_text(self.paces_raw) if self.paces_raw else None
 
 
-class CoachService(ActionsMixin, ProgressMixin):
+class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
     def __init__(self, db: DB, settings: Settings, coach, strava, clock=None):
         self.db, self.settings, self.coach, self.strava = db, settings, coach, strava
         self.today = clock or settings.today
@@ -359,6 +360,7 @@ class CoachService(ActionsMixin, ProgressMixin):
         paces = (self.db.kv_get("volume_outlook") or {}).get("paces_s")
         view = build_run_view(act, workout, detail, paces)
         view["feedback"] = self.db.get_feedback(activity_id)
+        view["execution"] = self.execution_for(workout) if workout else None
         view["detail_note"] = note
         return view
 
@@ -399,6 +401,9 @@ class CoachService(ActionsMixin, ProgressMixin):
              "is_today": ws + timedelta(days=i) == today}
             for i in range(7)
         ]
+        for _w in by_date.values():
+            _w["execution"] = self.execution_for(_w) if _w["status"] in ("completed", "partial") else None
+        data["ease_suggestion"] = self.ease_suggestion()
         data["today_workout"] = by_date.get(today.isoformat())
         data["week_workouts"] = list(by_date.values())
         week = {w["week_start"]: w for w in self.db.get_weeks()}.get(ws.isoformat())
@@ -447,6 +452,8 @@ class CoachService(ActionsMixin, ProgressMixin):
             weeks.setdefault(w["week_start"], {"week_start": w["week_start"], "phase": "", "target_km": None, "recovery": 0, "workouts": []})["workouts"].append(w)
         out = [weeks[k] for k in sorted(weeks)]
         for wk in out:
+            for _w in wk["workouts"]:
+                _w["execution"] = self.execution_for(_w) if _w["status"] in ("completed", "partial") else None
             wk["planned_km"] = round(sum(w["distance_km"] or 0 for w in wk["workouts"]), 1)
         return out
 
@@ -480,6 +487,7 @@ class CoachService(ActionsMixin, ProgressMixin):
         stats["hours"] = round(sum(a["moving_s"] for a in acts) / 3600, 1)
         stats["runs_logged"] = len(acts)
         stats["streak"] = self.streak()
+        stats["execution"] = self.execution_overview()
         return {"fitness": self.fitness(), "heatmap": self.heatmap(), "badges": self.badges(), "weeks": weeks, "stats": stats, "max": max([max(w["actual"], w["target"] or w["planned"]) for w in weeks] + [1])}
 
 

@@ -160,6 +160,40 @@ class ActionsMixin:
         self.db.kv_set("pain_until", end.isoformat())
         return changed
 
+    def ease_plan(self, days: int = 14, factor: float = 0.90) -> dict:
+        """A slightly easier plan for the next `days` days: about 10% less distance and at most one hard session per week.
+
+        Used when execution scores show the athlete is struggling to hit the plan. Returns {"changed", "km_removed", "downgraded"}.
+        """
+        today = self.today()
+        end = today + timedelta(days=days - 1)
+        before = after = 0.0
+        changed = downgraded = 0
+        quality_seen: set[str] = set()
+        for w in self.db.get_workouts(today, end):
+            if w["status"] != "planned" or w["type"] == "race":
+                continue
+            fields: dict = {}
+            if w["type"] in K.QUALITY_TYPES:
+                if w["week_start"] in quality_seen:
+                    fields.update(type="easy", title="Easy run", description="Easy, conversational pace. Eased from a second hard session this week.",
+                                  pace_guidance="RPE 3–4: you could hold a conversation")
+                    downgraded += 1
+                quality_seen.add(w["week_start"])
+            if w["distance_km"]:
+                fields["distance_km"] = round(w["distance_km"] * factor * 2) / 2 if w["distance_km"] >= 4 else round(w["distance_km"] * factor, 1)
+                if w["duration_min"]:
+                    fields["duration_min"] = int(round(w["duration_min"] * fields["distance_km"] / w["distance_km"]))
+                before += w["distance_km"]
+                after += fields["distance_km"]
+            fields["note"] = "Eased about 10% after low execution scores"
+            self.db.update_workout(w["id"], **fields)
+            changed += 1
+        self.db.kv_set("ease_plan_quiet_until", (today + timedelta(days=days)).isoformat())
+        self.db.log("plan", f"Made the next {days} days slightly easier after low execution scores: about {before - after:.1f} km less"
+                            f"{', ' + str(downgraded) + ' hard session' + ('s' * (downgraded != 1)) + ' made easy' if downgraded else ''}.")
+        return {"changed": changed, "km_removed": round(before - after, 1), "downgraded": downgraded}
+
     def pain_until(self) -> date | None:
         v = self.db.kv_get("pain_until")
         d = date.fromisoformat(v) if v else None

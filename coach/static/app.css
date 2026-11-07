@@ -298,3 +298,5 @@ details.more-t[open] .clamp{-webkit-line-clamp:unset;display:block}
 .tracks{list-style:none;margin:10px 0 0;padding:0}.tracks li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
 .tracks li:first-child{border-top:0}.tracks a{display:flex;flex-direction:column;min-width:0;color:var(--fg)}.tracks .tt{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tracks .tm{flex:none}
+
+.exec{font-variant-numeric:tabular-nums}.exec.eh{color:var(--ok)}.exec.em{color:var(--warn)}.exec.el{color:var(--bad)}

@@ -147,6 +147,18 @@ Caveats: written from Spotify's docs and developer reports, **not tested against
 Feb 2026 (`POST /me/playlists`, `POST /playlists/{id}/items`; the app falls back to the old ones on a 404) and some developers report 403s
 creating playlists in developer mode. A 403 shows a message listing the usual causes. If it persists, copy-the-list still works.
 
+### Execution score and "make it easier"
+
+Every completed run gets an **execution score (0-100)**: how closely it matched the plan in **distance** (2 points off per 1% over or under)
+and **pace** (full marks inside the target band, zero at 15% outside it), averaged. Easy, long and recovery runs are judged against your easy-pace
+range, so running them too fast costs points; tempo, interval and race runs use the plan's own average pace for the session with a tolerance.
+It shows on Plan, Today, the run page and Progress (14-day average). Hills, heat and GPS move pace, so it's a guide, not a grade.
+
+After **two weeks on the plan**, if you're **regularly under 70%** (average under 70, at least half of at least four runs under 70, missed runs counting as 0,
+skipped runs not counted), Today suggests making the next two weeks slightly easier: about 10% less distance and at most one hard session a week.
+It's one tap to apply or "Not now" (quiet for a week); applying also stays quiet for two weeks. It never fires in the last three weeks before a race
+or while pain mode is on. "Review & adjust my plan" can then re-plan the weeks after.
+
 ## Develop
 ```bash
 pip install -r requirements-dev.txt && pytest

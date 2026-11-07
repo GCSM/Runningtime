@@ -39,6 +39,17 @@
   <a class="btn sec sm" href="/setup" style="display:flex;align-items:center;justify-content:center;margin-top:14px">Adjust goal &amp; schedule</a>
 </section>
 {% endif %}
+{% if d.ease_suggestion %}{% set es = d.ease_suggestion %}
+<section class="card rise" role="region" aria-label="Plan suggestion" style="border:2px solid var(--hl)">
+  <h2>Make the next two weeks a bit easier?</h2>
+  <p class="sm" style="margin-top:8px">Over the last two weeks your runs averaged <b>{{ es.avg }}%</b> execution (distance and pace against the plan), and {{ es.under }} of {{ es.n }} were under {{ es.threshold }}%.{% if es.reason_text %} The most common reason: {{ es.reason_text }}.{% endif %}</p>
+  <p class="sm mut" style="margin-top:8px">I'd trim about 10% off the distance and keep one hard session a week for the next two weeks. Pace and hills can skew the score, so it's your call.</p>
+  <div class="row" style="gap:10px;margin-top:14px">
+    <form method="post" action="/plan/ease" class="grow"><button style="width:100%">Make it easier</button></form>
+    <form method="post" action="/plan/ease/dismiss" class="grow"><button class="sec" style="width:100%">Not now</button></form>
+  </div>
+</section>
+{% endif %}
 {% if not d.has_plan %}
   {% if d.strava_ready and not d.strava_connected and not d.strava_skipped %}
   <div class="card empty rise">
@@ -57,7 +68,7 @@
 {% elif w %}
   <section class="hero t-{{ w.type }} rise {{ 'finished' if w.status == 'completed' }}" data-word="{{ w.type }}">
     <div class="k"><span class="pill">{{ w.type }}</span>{% if w.type == 'race' %}Race day{% else %}Today’s run{% endif %}</div>
-    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Crushed it' if w.status == 'completed' else 'Partly done' }}</div>
+    {% if w.status in ('completed','partial') %}<div class="done">{{ icon('check') }} {{ 'Crushed it' if w.status == 'completed' else 'Partly done' }}{% if w.execution %} · {{ w.execution.score }}% execution{% endif %}</div>
     {% elif w.status == 'skipped' %}<div class="done" style="background:rgba(0,0,0,.35);color:#fff">Skipped</div>{% endif %}
     <div class="title">{{ w.title }}</div>
     <div class="big num" data-count="{{ w.distance_km|dist(units, false) }}">{{ w.distance_km|dist(units, false) }}<small>{{ units }}</small></div>

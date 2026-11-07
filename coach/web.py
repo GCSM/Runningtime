@@ -497,6 +497,21 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
         return do(go, safe_next(next), lambda r: ("Thanks for telling me. I've eased off the next week's hard sessions; see your coach note."
                                                   if r["pain"] else "Thanks, noted. Your coach will use this."))
 
+    @app.post("/plan/ease")
+    def plan_ease(request: Request):
+        svc = request.state.svc
+        if not svc.ease_suggestion():
+            return back("/", err="That suggestion is no longer needed.")
+        r = svc.ease_plan()
+        return back("/", f"Done: the next two weeks are about {r['km_removed']:.0f} km easier"
+                         f"{' and ' + str(r['downgraded']) + ' hard session' + ('s' * (r['downgraded'] != 1)) + ' became easy' if r['downgraded'] else ''}. "
+                         "Tap “Review & adjust my plan” when you want the weeks after that re-planned too.")
+
+    @app.post("/plan/ease/dismiss")
+    def plan_ease_dismiss(request: Request):
+        request.state.svc.dismiss_ease_suggestion()
+        return back("/", "OK, I won't suggest it again for a week.")
+
     @app.post("/api/badges/seen")
     def badges_seen(request: Request):
         request.state.svc.mark_badges_seen()

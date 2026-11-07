@@ -49,6 +49,10 @@
     <tr><td class="mut">You ran</td><td style="text-align:right" class="b">{{ r.km|dist(units) }} · {{ (r.moving_s / 60)|round|int }} min</td></tr>
     {% if r.plan.pace_guidance %}<tr><td class="mut">Pace guide</td><td style="text-align:right">{{ r.plan.pace_guidance }}</td></tr>{% endif %}</table>
   {% if r.plan.verdict %}<p class="b" style="margin-top:12px">{{ r.plan.verdict }}</p>{% endif %}
+  {% if r.execution %}{% set ex = r.execution %}
+  <div style="margin-top:14px"><div class="lab">Execution</div>
+    <div class="row" style="align-items:baseline;gap:10px"><b class="num exec e{{ 'h' if ex.score >= 85 else 'm' if ex.score >= 70 else 'l' }}" style="font-size:34px">{{ ex.score }}%</b><span class="b">{{ ex.label }}</span></div>
+    <p class="sm mut" style="margin-top:4px">{{ ex.headline|capitalize }}. Distance {{ ex.distance_score }}{% if ex.pace_score is not none %}, pace {{ ex.pace_score }}{% endif %}.{% if ex.target_pace %} Target {{ ex.target_pace }}, you ran {{ ex.actual_pace }}.{% endif %} Hills, heat and GPS can move pace, so treat it as a guide.</p></div>{% endif %}
   {% for n in r.plan.notes %}<p class="sm mut" style="margin-top:6px">{{ n }}</p>{% endfor %}
 </section>{% endif %}
 

@@ -23,6 +23,7 @@
     <div><b class="num">{{ (s.best_pace_s_km|pace(units)).split('/')[0] if s.best_pace_s_km else '–' }}</b><span>Best pace</span></div>
     <div><b class="num">{{ s.hours }}</b><span>Hours run</span></div>
   </div>
+  {% if s.execution %}<p class="sm" style="margin-top:16px;text-align:center">Execution, last two weeks: <b class="exec e{{ 'h' if s.execution.avg >= 85 else 'm' if s.execution.avg >= 70 else 'l' }}">{{ s.execution.avg }}%</b> across {{ s.execution.n }} run{{ '' if s.execution.n == 1 else 's' }}{% if s.execution.missed %} ({{ s.execution.missed }} missed){% endif %}</p>{% endif %}
   {% if s.streak >= 2 %}<p class="sm" style="margin-top:16px;text-align:center"><span class="pill hot">🔥 {{ s.streak }} runs in a row without a miss</span></p>{% endif %}
 </section>
 {% set f = pr.fitness %}

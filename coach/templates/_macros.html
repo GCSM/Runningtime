@@ -28,7 +28,7 @@
     <div class="date"><span>{{ w.date|fmt_date('%a') }}</span><b>{{ w.date|fmt_date('%-d') }}</b></div>
     <div class="bar"></div>
     <div class="grow"><div class="b">{{ w.title }}</div>
-      <div class="sm mut">{{ w.distance_km|dist(units) }} · {{ w.duration_min }} min{% if w.actual_km %} · ran {{ w.actual_km|dist(units) }}{% endif %}</div></div>
+      <div class="sm mut">{{ w.distance_km|dist(units) }} · {{ w.duration_min }} min{% if w.actual_km %} · ran {{ w.actual_km|dist(units) }}{% endif %}{% if w.execution %} · <b class="exec e{{ 'h' if w.execution.score >= 85 else 'm' if w.execution.score >= 70 else 'l' }}" title="Execution score">{{ w.execution.score }}%</b>{% endif %}</div></div>
     {{ status_icon(w.status) }}
   </summary>
   <div class="wk-d">
@@ -37,6 +37,8 @@
     {% if w.pace_guidance %}<p style="margin-top:6px"><b>Pace:</b> {{ w.pace_guidance }}</p>{% endif %}
     {% if w.note %}<p class="xs" style="margin-top:6px">{{ w.note }}</p>{% endif %}
     {% if w.moved_from %}<p class="xs" style="margin-top:6px">Moved from {{ w.moved_from|fmt_date }}</p>{% endif %}
+    {% if w.execution %}<p class="sm" style="margin-top:8px"><b>Execution {{ w.execution.score }}%</b> ({{ w.execution.label|lower }}): {{ w.execution.headline }}.
+      <span class="mut">Distance {{ w.execution.distance_score }}{% if w.execution.pace_score is not none %} · pace {{ w.execution.pace_score }}{% endif %}{% if w.execution.target_pace %} · target {{ w.execution.target_pace }}, you ran {{ w.execution.actual_pace }}{% endif %}</span></p>{% endif %}
     {% if w.activity_id %}<p style="margin-top:10px"><a class="btn sec sm" href="/run/{{ w.activity_id }}">Run details</a></p>{% endif %}
     {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}<p style="margin-top:10px"><a class="btn sec sm" href="/workout/{{ w.id }}/playlist">🎧 Run playlist</a></p>{% endif %}
     {% if w.status == 'planned' and w.date >= today and w.type != 'race' %}
