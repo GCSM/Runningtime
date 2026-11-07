@@ -149,7 +149,8 @@ def test_minimum_weeks_fall_with_experience_and_rise_with_distance():
 def test_quality_limits_by_level_phase_and_schedule():
     q = K.quality_limit
     assert q("beginner", "base", False, 3) == 0 and q("beginner", "build", False, 3) == 1
-    assert q("intermediate", "base", False, 4) == 1 and q("intermediate", "build", False, 4) == 2
+    assert q("intermediate", "base", False, 4) == 1 and q("intermediate", "build", False, 4) == 1      # 4 runs incl. the long run: one hard session
+    assert q("intermediate", "build", False, 5) == 2 and q("advanced", "build", False, 4) == 2 and q("advanced", "build", False, 3) == 1
     assert q("intermediate", "build", False, 3) == 1                                   # needs 4+ run days for a second session
     assert q("advanced", "peak", False, 5) == 2
     assert q("advanced", "build", True, 5) == 0                                        # recovery week: no hard work
@@ -245,3 +246,25 @@ def test_a_six_hour_marathoner_can_still_cover_the_full_long_run():
     assert K.long_run_km(90, 42.195, "beginner", 5, 300, pace) == 28.0      # time allows 33 km; the beginner distance cap (28 km) binds
     assert K.long_run_km(90, 42.195, "intermediate", 5, 300, pace) == 32.0  # 300 min = 33.3 km, capped at 32
     assert K.long_run_km(90, 42.195, "intermediate", 5, 240, pace) == 26.5  # a 240-minute day would have cost 5.5 km
+
+
+# ---- run frequency and per-run size: a handful of runs must not carry a huge week -----------------------------------
+def test_run_caps_by_level_type_and_goal():
+    assert K.run_cap_minutes("intermediate", "easy", 5) == 70 and K.run_cap_minutes("intermediate", "tempo", 5) == 75
+    assert K.run_cap_minutes("intermediate", "easy", 42.195) == 80 and K.run_cap_minutes("intermediate", "intervals", 42.195) == 75
+    assert K.run_cap_minutes("beginner", "easy", 10) < K.run_cap_minutes("advanced", "easy", 10)
+
+
+def test_frequency_cap_grows_with_run_days_and_marathon_peak_follows_it():
+    caps = [K.frequency_cap_km("intermediate", 42.195, d, 390) for d in (3, 4, 5, 6)]
+    assert caps == sorted(caps) and caps[0] < 50 < 70 < caps[2]
+    for days, (lo, hi) in {4: (58, 68), 5: (74, 82)}.items():
+        o = _mk_outlook(weeks=26, mins=500 * days // 4, long_min=240, days=days, base=35)
+        assert lo <= o.peak_km <= hi, (days, o.peak_km)
+    four = _mk_outlook(weeks=26, mins=500, long_min=240, days=4, base=35)
+    assert four.limit == "frequency" and "Adding another run day" in four.athlete_text("marathon", "intermediate")
+
+
+def test_the_reported_plan_shape_is_gone_no_78_km_on_four_runs():
+    o = _mk_outlook(weeks=26, mins=420, long_min=240, days=4, base=35)
+    assert o.peak_km <= 66                                                              # was 78 km on 4 runs: ~19.5 km per run, 3 of 4 runs hard

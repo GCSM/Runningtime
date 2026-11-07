@@ -70,7 +70,8 @@ def build_skeleton_info(
     low, target, high = K.peak_range(goal_km, experience)
     time_cap = weekly_minutes / (pace_s / 60)
     cur = max(baseline_km, MIN_BASE_KM)
-    cap = max(min(target, time_cap), cur)        # never push volume below what they already do; time is a hard ceiling otherwise
+    freq_cap = K.frequency_cap_km(experience, goal_km, run_days, pace_s)
+    cap = max(min(target, time_cap, freq_cap), cur)    # never push volume below what they already do; time and run frequency are hard ceilings
     first = max(0, (monday(today) - start).days // 7)
 
     def long_run(week_km: float) -> float:
@@ -104,7 +105,7 @@ def build_skeleton_info(
     if not training or cur >= target:
         limit = "none"
     elif level >= cap - 0.25:
-        limit = "time" if time_cap < target - 0.5 else "goal"
+        limit = "goal" if min(time_cap, freq_cap) >= target - 0.5 else ("frequency" if freq_cap <= time_cap else "time")
     else:
         limit = "ramp"
     peak_long = max((w.long_run_km for w in training), default=0.0)
@@ -112,7 +113,7 @@ def build_skeleton_info(
     outlook = VolumeOutlook(
         baseline_km=baseline_km, baseline_source=baseline_source, start_km=weeks[0].target_km if weeks else cur, peak_km=peak,
         ideal_low=low, ideal_target=target, ideal_high=high, limit=limit, time_cap_km=time_cap,
-        weeks_to_race=wtr, min_weeks=K.min_weeks(goal_km, experience), peak_long_km=peak_long,
+        weeks_to_race=wtr, min_weeks=K.min_weeks(goal_km, experience), peak_long_km=peak_long, freq_cap_km=freq_cap, run_days=run_days,
     )
     outlook.warnings = K.readiness_warnings(
         goal_km, experience, peak_km=peak, peak_long_km=peak_long, limit=limit, time_cap_km=time_cap, long_day_minutes=long_day_minutes,

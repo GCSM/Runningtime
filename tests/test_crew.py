@@ -140,7 +140,7 @@ def test_setup_warns_immediately_and_the_dashboard_keeps_the_warning(tmp_path):
     r = a.post("/setup", data=marathon, follow_redirects=True)
     assert "heads-up" in r.text and "long-run day has 60 minutes" in r.text
     assert "This plan won’t fully prepare you" in a.get("/").text
-    ok = a.post("/setup", data={**marathon, "min_sun": "210", "min_tue": "75", "min_thu": "75", "min_sat": "75", "baseline": "40", "race_date": str(TODAY + timedelta(weeks=28))}, follow_redirects=True)
+    ok = a.post("/setup", data={**marathon, "av_mon": "on", "min_mon": "75", "min_sun": "210", "min_tue": "75", "min_thu": "75", "min_sat": "75", "baseline": "40", "race_date": str(TODAY + timedelta(weeks=28))}, follow_redirects=True)
     assert "heads-up" not in ok.text and "won’t fully prepare" not in a.get("/").text
 
 

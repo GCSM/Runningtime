@@ -87,6 +87,29 @@ def max_weekly_increase_km(level_km: float, level: str) -> float:
     return max(level_km * RAMP_PCT[lv], RAMP_FLOOR_KM[lv])
 
 
+# ---- 3b. How big can one run be, and what does that mean for weekly volume at a given run frequency? --------------
+# Design choices (not from one source): they stop a handful of runs carrying a huge week. Single runs above ~70-90 minutes
+# are long runs, so weekday runs are capped by time; a marathon block gets a longer midweek aerobic run.
+RUN_MAX_MIN = {"beginner": {"easy": 50, "quality": 50}, "intermediate": {"easy": 70, "quality": 75}, "advanced": {"easy": 85, "quality": 90}}
+MARATHON_EASY_BONUS_MIN = 10
+
+
+def run_cap_minutes(level: str, wtype: str, goal_km: float) -> int:
+    """Longest a non-long run may be (tempo/interval sessions include warm-up and cool-down)."""
+    kind = "quality" if wtype in QUALITY_TYPES else "easy"
+    m = RUN_MAX_MIN[_level(level)][kind]
+    return m + (MARATHON_EASY_BONUS_MIN if kind == "easy" and _bucket(goal_km) >= 42 else 0)
+
+
+def frequency_cap_km(level: str, goal_km: float, run_days: int, pace_s_km: float) -> float:
+    """Weekly km that run_days runs can carry without any weekday run exceeding its cap and the long run exceeding its share."""
+    lv = _level(level)
+    avg_min = (run_cap_minutes(lv, "easy", goal_km) + run_cap_minutes(lv, "tempo", goal_km)) / 2
+    others = max(run_days - 1, 1)
+    share = long_run_share(100.0, run_days, goal_km)
+    return others * avg_min * 60 / pace_s_km / (1 - share)
+
+
 # ---- 4. Long runs -------------------------------------------------------------------------------------------------
 LONG_RUN_CAP_KM = {  # peak long run by event and level; upper end = claude-coach "Long Run Targets by Event"
     "beginner":     {5.0: 8, 10.0: 12, 21.0975: 16, 42.195: 28},
@@ -165,7 +188,11 @@ def quality_limit(level: str, phase: str, recovery: bool, run_days: int) -> int:
     lv = _level(level)
     if phase == "base":
         return 0 if lv == "beginner" else 1
-    return 1 if lv == "beginner" or (lv == "intermediate" and run_days < 4) else 2
+    if lv == "beginner":
+        return 1
+    if run_days >= 5 or (lv == "advanced" and run_days >= 4):
+        return 2
+    return 1          # a 4-run week already has a long run: a second hard session would make 3 of the 4 runs hard
 
 
 QUALITY_TYPES = ("tempo", "intervals")
@@ -317,11 +344,17 @@ def readiness_warnings(goal_km: float, level: str, *, peak_km: float, peak_long_
             out.append(f"Your longest run would only reach {peak_long_km:.0f} km because your long-run day has {long_day_minutes} minutes. "
                        f"A {goal} needs a long run of at least {need_long:.0f} km, which takes about {mins} minutes at an easy pace. "
                        f"Add time to your long-run day (aim for {mins}+ minutes) in Goal & schedule.")
+        elif limit == "frequency":
+            out.append(f"Your longest run would only reach {peak_long_km:.0f} km; a {goal} plan needs at least {need_long:.0f} km. "
+                       f"With only the run days you chose, weekly distance (and so the long run) tops out too low. Adding a run day raises it.")
         else:
             out.append(f"Your longest run would only reach {peak_long_km:.0f} km; a {goal} plan needs at least {need_long:.0f} km. "
                        f"There isn't enough time or build-up before the race to get there safely.")
     if peak_km < ideal_low * MIN_VOLUME_SHARE:
-        if limit == "time":
+        if limit == "frequency":
+            out.append(f"With the run days you chose, weekly distance tops out at {peak_km:.0f} km; published {level} {goal} plans peak around "
+                       f"{ideal_low:.0f}+ km. Adding a run day would raise the ceiling without making each run huge.")
+        elif limit == "time":
             mins = int(math.ceil(ideal_low * MIN_VOLUME_SHARE * pace_s_km / 60 / 10) * 10)
             out.append(f"Your running time ({weekly_minutes} min/week, about {time_cap_km:.0f} km) caps the build at {peak_km:.0f} km/week; "
                        f"published {level} {goal} plans peak around {ideal_low:.0f}+ km. You'd need roughly {mins} minutes a week "
@@ -350,6 +383,8 @@ class VolumeOutlook:
     weeks_to_race: int
     min_weeks: int
     peak_long_km: float = 0.0
+    freq_cap_km: float = 0.0
+    run_days: int = 0
     warnings: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -367,6 +402,9 @@ class VolumeOutlook:
         if self.limit == "time":
             text += (f" Your available running time (about {self.time_cap_km:.0f} km/week at an easy pace) is what limits the build; "
                      f"adding minutes on your running days would allow a stronger plan.")
+        elif self.limit == "frequency":
+            text += (f" With {self.run_days} runs a week, going much beyond {self.freq_cap_km:.0f} km would mean very long runs on every run day, "
+                     f"so the build stops there. Adding another run day would allow a bigger, safer build.")
         elif self.limit == "ramp":
             text += (f" There aren't enough weeks to reach that range safely from where you are now, so this is as far as a steady build can go "
                      f"in {self.weeks_to_race} weeks.")

@@ -192,3 +192,17 @@ volume) and tells the athlete to see a clinician.
 - Published plans disagree with each other, sometimes by 2×. The app targets the lower-middle of each range and
   never exceeds what the athlete's schedule and safe ramp allow.
 - This is general fitness guidance, not medical advice.
+
+
+## Run frequency and per-run size (design choices, added after a 4-run marathon week came out at 78 km)
+
+Weekly volume used to be limited only by the goal/level range and the athlete's stated time. That let four runs carry a huge week:
+~19.5 km per run on average, tempo and interval days of 100 minutes, and three of the four runs hard. Now:
+
+- **Per-run caps** (`knowledge.RUN_MAX_MIN`): weekday easy runs ≤ 50/70/85 min and tempo/interval sessions (with warm-up and cool-down)
+  ≤ 50/75/90 min for beginner/intermediate/advanced; a marathon block gets +10 min on easy runs. Long runs keep their own caps. These are
+  design choices, not figures from one source; they follow the usual pattern that anything much beyond 75-90 minutes is a long run.
+- **Frequency ceiling** (`knowledge.frequency_cap_km`): weekly km can't exceed what the run days carry at those caps with the long run at
+  its usual share (40% marathon, 35% half). A 4-run intermediate marathon peaks around 60-65 km; a fifth run day allows the full ~78 km.
+  The plan page says when run frequency is what limits the build, and the readiness warning suggests adding a run day.
+- **Hard sessions**: with 4 run days or fewer a non-advanced athlete gets one tempo/interval session plus the long run, not two.

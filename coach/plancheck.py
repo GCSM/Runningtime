@@ -133,6 +133,16 @@ def sanitize(
                 downgrade(w, f"at most {limit} hard session{'s' * (limit != 1)} this week at your level and phase"); continue
             kept.append(w)
 
+    # No single weekday run above its time cap: bigger weeks come from more run days, not from huge runs.
+    for w in clean:
+        if w["type"] in ("long", "race", "cross") or not w["distance_km"] or not w["duration_min"]:
+            continue
+        cap = K.run_cap_minutes(level, w["type"], profile.goal_km)
+        if w["duration_min"] > cap + 1:
+            new_km = round(w["distance_km"] * cap / w["duration_min"], 1)
+            notes.append(f"{w['date']}: {w['type']} run shortened from {w['distance_km']:.1f} to {new_km:.1f} km (longer than {cap} minutes)")
+            w["distance_km"], w["duration_min"] = new_km, cap
+
     # Hard-session volume: about half of a session is warm-up/cool-down, so cap session distance at 45% of the week
     # (true hard work then stays near the 80/20 guideline). Easy runs are topped up below to restore the week's volume.
     for ws, items in by_week.items():
@@ -188,7 +198,7 @@ def sanitize(
             out = {}
             for w in easy:
                 av = profile.availability.get(DAYS[date.fromisoformat(w["date"]).weekday()])
-                max_min = av.minutes if av and av.minutes else w["duration_min"]
+                max_min = min(av.minutes if av and av.minutes else w["duration_min"], K.run_cap_minutes(level, w["type"], profile.goal_km))
                 km_per_min = w["distance_km"] / w["duration_min"] if w["duration_min"] else 60 / pace_s_km
                 ceiling = min(max_min * km_per_min, long_km * 0.85 if long_km else 1e9)
                 if growth:
