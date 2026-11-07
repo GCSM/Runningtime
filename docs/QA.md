@@ -62,12 +62,18 @@ Found by an independent red-team review, an expert-coach review of model-written
 
 | Module | Before | After |
 |---|---|---|
-| `coach/plancheck.py` (sanitizer) | 40% | see "Final numbers" below |
-| `coach/skeleton.py` | 72% | see below |
-| `coach/adherence.py` | 33% | see below |
-| `coach/knowledge.py` | 100% (sample of 190) | n/a |
+| `coach/plancheck.py` (sanitizer) | 40% (155 mutants) | **77%** (230 of 231 mutants) |
+| `coach/adherence.py` | 33% | **86%** (all 59) |
+| `coach/skeleton.py` | 72% | **76%** (150 of 157; the code grew a lot, so this is a harder target) |
+| `coach/knowledge.py` | 100% (sample of 190) | not re-run |
+
+What still survives: mostly tolerance constants in the title-rewriting step (5% / 0.3 km), rounding-level thresholds in the top-up, and in the
+skeleton the mid-plan ladder arithmetic, the phase boundaries (40/80%), the taper truncation for very short plans and some `limit` labels. Some are
+equivalent mutants (a changed constant that cannot change any output). The rest are listed in the gaps below and are the next tests to write.
 
 ## Known gaps (not covered, in rough priority order)
+
+0. **Mutation survivors** above: about a quarter of the sanitizer and skeleton mutants are still not caught.
 
 1. **The real model.** Model-written plans in these tests came from sub-agents of the development session, not from `claude-sonnet-5-5` through the API. Run
    `python tools/plan_eval.py live OUT && python tools/plan_eval.py audit OUT` with a key, several times (the model varies), after any prompt or skeleton change.
