@@ -101,3 +101,12 @@ missing base-phase threshold work in marathon/half plans, 5K-pace intervals ever
 run, run/walk minutes ignoring the warm-up walk, and "fuel" text on 5K/10K race day. Known limits: 3-day weeks for half/marathon can't always carry
 the skeleton's km within weekday caps (weeks land at 85-92%); free-text notes (e.g. "away Thursday-Sunday") are not yet converted to changes in
 builder mode.
+
+### Builder vs Sonnet 5.5 (blind coach comparison)
+Five scenarios (5K beginner, 10K, half, marathon 4-day and 5-day); Sonnet got the app's exact system prompt, tool schema and context (via subagents:
+no API key in the dev container). Both engines: 0 rule problems, 0 shape problems, 0 guard repairs: the audit cannot tell them apart because the
+skeleton fixes volume and long runs. A blind coach review of the day-level sessions split 2-2 (builder won half and marathon; Sonnet won 5K
+beginner and 10K), builder narrowly ahead (~55/45). Fixed in the builder afterwards: repeated "after the run" text, long-run split arithmetic,
+"half-marathon-pace" sessions run at threshold pace, threshold work missing from 10K bases, no run in 5K race week, abrupt run/walk -> continuous.
+Sonnet's weaknesses seen: no pace numbers in sessions even with a goal time, fartlek-heavy marathon plans with no medium-long/MP work.
+Re-run: `python tools/plan_eval.py capture|live|compare OUT` (live needs ANTHROPIC_API_KEY).

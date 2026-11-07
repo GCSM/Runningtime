@@ -56,7 +56,7 @@ WARMUP_MIN = {"beginner": 8, "intermediate": 10, "advanced": 12}
 QUALITY_BUDGET = 0.40                                      # all hard sessions together ≤ this share of the week's km (guard allows 45%)
 MIN_EASY_KM = {"beginner": 2.0, "intermediate": 3.0, "advanced": 3.0}
 EASY_MAX_OF_LONG = 0.85                                    # an easy run never exceeds this share of the long run
-STRIDES = "6 × 20 s relaxed-fast strides with full walking recovery, after the run"
+STRIDES = "6 × 20 s relaxed-fast strides with full walking recovery"
 WEEKDAY_PREFERENCE = {1: 5, 3: 5, 2: 4, 4: 3, 0: 2, 5: 2, 6: 1}   # Tue/Thu are the classic quality days
 
 
@@ -174,10 +174,12 @@ def tempo_session(a: Athlete, minutes: int, cruise: bool, *, pace_key: str = "th
     wu_m, wu_km = warmup_cooldown(a)
     p = a.paces[pace_key]
     mp = pace_key == "marathon"
-    if mp and a.goal_pace and a.bucket >= 42:
+    hm = label == "half-marathon" and bool(a.goal_pace) and a.bucket == 21.0975       # a half-marathon-pace run is run at the goal pace, not threshold
+    goal_paced = (mp and a.goal_pace and a.bucket >= 42) or hm
+    if goal_paced:
         p = a.goal_pace
-    effort = "marathon effort, steady and controlled, RPE 5–6" if mp else f"{label} pace, comfortably hard, RPE 7"
-    cue = goal_pace_text(a) + f" ({effort})" if (mp and a.goal_pace and a.bucket >= 42) else pace_cue(a, pace_key, effort)
+    effort = "marathon effort, steady and controlled, RPE 5–6" if mp else (f"half-marathon effort, strong but controlled, RPE 6–7" if hm else f"{label} pace, comfortably hard, RPE 7")
+    cue = goal_pace_text(a) + f" ({effort})" if goal_paced else pace_cue(a, pace_key, effort)
     if cruise:
         each = 6 if minutes <= 24 else 8
         n = max(2, round(minutes / each))
@@ -252,7 +254,7 @@ def tempo_like_goal(a: Athlete, reps: int, metres: int) -> Session:
 
 
 def easy_session(a: Athlete, km: float, *, strides: bool = False, title: str | None = None, run_walk: tuple[int, int] | None = None,
-                 kind: str = "easy") -> Session:
+                 kind: str = "easy", transition: bool = False) -> Session:
     cue = pace_cue(a, "easy", "conversational, RPE 3–4")
     if run_walk:
         mins = km * a.easy * WALK_PACE_FACTOR / 60
@@ -275,9 +277,17 @@ def easy_session(a: Athlete, km: float, *, strides: bool = False, title: str | N
         d = f"Steady and conversational, a little longer than your other weekday runs (RPE 3–4). Pace {cue}."
     else:
         d = f"Easy and conversational (RPE 3–4): you should be able to talk in full sentences. Pace {cue}."
+    if transition:
+        d += " You are moving from run/walk to continuous running: run the whole way, but take a 1 min walk break if you need one."
     if strides:
         d += f" After the run: {STRIDES}."
     return Session("long" if kind == "long" else "easy", t, d, km, mins, cue)
+
+
+def _d1(km: float, units: str) -> str:
+    """Distance for text with one decimal only when needed, so '25.5 km + 5 km' adds up to the 30.5 km long run."""
+    v = km / (K.KM_PER_MI if units == 'mi' else 1.0)
+    return f"{v:.1f}".rstrip('0').rstrip('.') + (' mi' if units == 'mi' else ' km')
 
 
 def paced_long_session(a: Athlete, km: float, block_km: float) -> Session:
@@ -288,7 +298,7 @@ def paced_long_session(a: Athlete, km: float, block_km: float) -> Session:
     easy_km = km - block_km
     mins = easy_km * a.easy / 60 + block_km * p / 60
     t = f"Long run with {round(block_km)} km at {name}" if a.units == "km" else f"Long run with {block_km / K.KM_PER_MI:.0f} mi at {name}"
-    d = (f"First {K.fmt_dist(easy_km, a.units)} easy and conversational. Then {K.fmt_dist(block_km, a.units)} at {cue}: controlled, even splits, "
+    d = (f"First {_d1(easy_km, a.units)} easy and conversational. Then {_d1(block_km, a.units)} at {cue}: controlled, even splits, "
          f"practice taking fuel. Last few minutes easy.")
     return Session("long", t, d, km, mins, cue, hard_km=block_km)
 
@@ -363,7 +373,7 @@ def quality_plan(a: Athlete, phase: str, recovery: bool, n_slots: int, week_idx:
             return []
         return ["fartlek"] if week_idx % 2 == 0 else ["tempo"]
     if phase == "base":
-        if a.bucket >= 21 and week_idx >= 2 and week_idx % 2 == 1:
+        if a.bucket >= 10 and week_idx >= 2 and week_idx % 2 == 1:
             return ["tempo"]                                  # half and marathon builds start threshold work in the base, as Daniels and Pfitzinger do
         return ["fartlek"]
     n = 1 if paced_long else n_slots
@@ -453,6 +463,7 @@ def build(ctx: dict) -> dict:
                 and long_km >= max(8.0, 0.75 * a.peak_long_km) and not _near(long_d, hard_dates, 2) and window_ok(long_d, hard_dates):
             paced = paced_n % 2 == 0 or (a.bucket >= 42 and paced_n % 2 == 1 and False)
             paced_n += 1
+        trans = training and rw is None and nth_train >= 2 and run_walk_rung(a, nth_train - 2) is not None
         just_ended = training and nth_train >= 2 and run_walk_rung(a, nth_train - 2) is not None      # a week of continuous running before the first hard session
         kinds = quality_plan(a, phase, rec, limit, wi, prog, runwalk=rw is not None or just_ended, paced_long=paced)
         if paced:
@@ -474,7 +485,7 @@ def build(ctx: dict) -> dict:
                     if block >= 3:
                         long_s = paced_long_session(a, lk, round(block))
                 if long_s is None:
-                    long_s = easy_session(a, lk, kind="long", run_walk=rw)
+                    long_s = easy_session(a, lk, kind="long", run_walk=rw, transition=trans)
             taken = set(sessions) | ({long_d} if long_d else set())
             easy_days = [(i, d) for i, d in days if d not in taken]
             if rw is not None and thin:
@@ -504,7 +515,7 @@ def build(ctx: dict) -> dict:
         for (i, d), (km, kind) in zip(easy_days, alloc):
             if km <= 0:
                 continue
-            out.append(row(d, easy_session(a, km, strides=d in stride_days, kind=kind, run_walk=rw)))
+            out.append(row(d, easy_session(a, km, strides=d in stride_days, kind=kind, run_walk=rw, transition=trans)))
     if not any(x["type"] == "race" for x in out):
         out.append(row(race, race_session(a)))
     out.sort(key=lambda x: x["date"])
@@ -678,7 +689,7 @@ def race_week(a: Athlete, w: dict, ws: date, days, hard_dates: list[date]) -> li
         rest = [x for x in rest if x[1] != touch[1]]
     if rest and target > 12:
         plan.append((rest[0][1], "easy"))
-    elif rest and target > 7 and len(plan) < 2:
+    elif rest and target > 5 and len(plan) < 2:
         plan.append((rest[-1][1], "easy"))
     budget = target if target > 0 else 8.0
     km_by = {"shakeout": min(5.0, max(3.0, 0.2 * budget)), "touch": 0.0, "easy": 0.0}
