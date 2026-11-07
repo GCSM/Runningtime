@@ -313,3 +313,15 @@ def test_a_completed_benchmark_moves_the_next_plans_paces():
     goal = 46.0
     assert K.working_vdot(goal, F.run_vdot(fast), 4) > K.working_vdot(goal, F.run_vdot(slow), 4)
     assert K.training_paces(K.working_vdot(goal, F.run_vdot(fast), 4))["threshold"][0] < K.training_paces(K.working_vdot(goal, F.run_vdot(slow), 4))["threshold"][0]
+
+
+@pytest.mark.parametrize("goal,kw", [(42.195, dict(level="intermediate", nd=5, base=40, weeks=24, mins=80)), (42.195, dict(level="advanced", nd=6, base=50, weeks=20, mins=80)),
+                                     (42.195, dict(level="intermediate", nd=4, base=35, weeks=20)), (21.0975, dict(level="intermediate", nd=5, base=30, weeks=18, mins=80))])
+def test_a_long_run_with_a_pace_block_has_three_easy_days_either_side(goal, kw):
+    p, svc, udb, coach, ws = plan(goal, **kw)
+    paced = [w for w in ws if is_paced_long(w)]
+    assert paced
+    for w in paced:
+        d0 = date.fromisoformat(w["date"])
+        others = [x for x in ws if x is not w and (x["type"] in K.QUALITY_TYPES or is_paced_long(x)) and x["type"] != "race"]
+        assert not [x for x in others if abs((date.fromisoformat(x["date"]) - d0).days) < 3], (w["date"], [x["date"] for x in others if abs((date.fromisoformat(x["date"]) - d0).days) < 3])

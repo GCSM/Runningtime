@@ -492,6 +492,7 @@ def build(ctx: dict) -> dict:
     hard_dates: list[date] = []
     out: list[dict] = []
     paced_elig = paced_done = 0
+    heavy: list[date] = []                       # dates of long runs with a pace block
     occ: dict[str, int] = {}
     nb = len(train_idx)
     bench_weeks = {train_idx[round(f * (nb - 1))] for f in BENCHMARK_SHARE} if nb >= 10 else ({train_idx[nb // 2]} if nb >= 6 else set())
@@ -532,6 +533,8 @@ def build(ctx: dict) -> dict:
             kinds = ["benchmark"] + kinds[1:]
         if paced:
             hard_dates.append(long_d)
+            heavy.append(long_d)
+            kinds = ["tempo" if k == "mp-run" else k for k in kinds]        # no marathon-pace run in the week of a marathon-pace long run
         # --- the week: hard sessions, long run, easy days. If its days can't carry the km, give the hard days longer warm-ups and let easy
         # runs come closer to the long run's length before settling for a lighter week ---
         base_wu = WARMUP_MIN.get(a.level, 10)
@@ -539,7 +542,7 @@ def build(ctx: dict) -> dict:
         for wu, share, thin in ((base_wu, EASY_MAX_OF_LONG, True), (base_wu, 0.95, True), (base_wu, 1.0, True), (base_wu, 1.0, False),
                                 (base_wu + 2, 1.0, False), (base_wu + 4, 1.0, False), (base_wu + 6, 1.0, False)):
             a.wu_override = wu
-            sessions, used, q_days = place_quality(a, days, kinds, long_dates, hard_dates, race, target, prog, occ, phase, taper_seen)
+            sessions, used, q_days = place_quality(a, days, kinds, long_dates, hard_dates, race, target, prog, occ, phase, taper_seen, heavy)
             lk = round(long_km, 1) if long_d else 0.0
             long_s = None
             if long_d:
@@ -590,10 +593,11 @@ def build(ctx: dict) -> dict:
     return {"summary": "", "workouts": out}
 
 
-def place_quality(a: Athlete, days, kinds, long_dates, hard_dates, race: date, target: float, prog: float, occ: dict, phase: str, taper_seen: int):
+def place_quality(a: Athlete, days, kinds, long_dates, hard_dates, race: date, target: float, prog: float, occ: dict, phase: str, taper_seen: int,
+                  heavy: list[date] = ()):
     """Pick the days for this week's hard sessions and the hardest rung of each that fits its day and the week's caps. Returns
     ({date: session}, {date: kind}, days)."""
-    q_days = pick_quality_days(a, days, kinds, long_dates, hard_dates, race, taper=phase == "taper")
+    q_days = pick_quality_days(a, days, kinds, long_dates, hard_dates, race, taper=phase == "taper", heavy=heavy)
     sessions: dict[date, Session] = {}
     used: dict[date, str] = {}
     seen = dict(occ)
@@ -623,7 +627,8 @@ def _near(d: date, dates, gap: int) -> bool:
     return any(abs((d - x).days) < gap for x in dates)
 
 
-def pick_quality_days(a: Athlete, days, kinds: list[str], long_dates: set[date], hard_dates: list[date], race: date, *, taper: bool) -> list[date]:
+def pick_quality_days(a: Athlete, days, kinds: list[str], long_dates: set[date], hard_dates: list[date], race: date, *, taper: bool,
+                      heavy: list[date] = ()) -> list[date]:
     chosen: list[date] = []
     if not kinds:
         return chosen
@@ -632,7 +637,8 @@ def pick_quality_days(a: Athlete, days, kinds: list[str], long_dates: set[date],
         for i, d in days:
             if d in long_dates or d in chosen:
                 continue
-            if _near(d, long_dates, 2) or _near(d, hard_dates, 2) or _near(d, chosen, 2) or not window_ok(d, list(hard_dates) + chosen):
+            if _near(d, long_dates, 2) or _near(d, hard_dates, 2) or _near(d, chosen, 2) or not window_ok(d, list(hard_dates) + chosen) \
+                    or _near(d, heavy, 3):               # a long run with a pace block needs three easy days either side of any other hard session
                 continue
             to_race = (race - d).days
             if 0 <= to_race <= (3 if taper else 2):
