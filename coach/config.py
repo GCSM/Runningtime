@@ -11,6 +11,7 @@ class Settings:
     db_path: str = "data/coach.db"
     model: str = "claude-sonnet-5-5"
     effort: str = "medium"
+    plan_engine: str = "model"                 # "model": the language model writes the day-by-day plan; "builder": code writes it (coach/builder.py)
     chat_model: str = "claude-haiku-5-5"      # the cheapest current model: chat needs speed and low cost, not deep planning
     chat_effort: str = "low"
     spotify_client_id: str = ""                # one Spotify app for the whole server (PKCE: no client secret needed)
@@ -35,6 +36,7 @@ class Settings:
             db_path=e("COACH_DB", "data/coach.db"),
             model=e("COACH_MODEL", "claude-sonnet-5-5"),
             effort=e("COACH_EFFORT", "medium"),
+            plan_engine=(e("PLAN_ENGINE", "model") or "model").strip().lower(),
             chat_model=e("COACH_CHAT_MODEL", "claude-haiku-5-5"),
             chat_effort=e("COACH_CHAT_EFFORT", "low"),
             chat_daily_limit=int(e("CHAT_MESSAGES_PER_DAY", "40") or 40),

@@ -27,6 +27,7 @@ from .chat import ChatCoach, ChatService
 from .config import Settings
 from .errors import explain
 from .db import DB
+from .builder import BuilderCoach
 from .llm import Coach
 from .models import DAYS, KM_PER_MI, DayAvail, Profile
 from .service import CoachService, UserError
@@ -63,10 +64,15 @@ def goal_seconds(f) -> int | None:
     return parse_hms(str(f.get("goal_time", "")))
 
 
+def make_planner(settings: Settings):
+    """Who writes the day-by-day plan: the code-built planner (PLAN_ENGINE=builder) or the language model (default)."""
+    return BuilderCoach() if settings.plan_engine == "builder" else Coach(settings.model, effort=settings.effort)
+
+
 def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None, spotify_factory=None) -> FastAPI:
     settings = settings or Settings.from_env()
     db = db or DB(settings.db_path)
-    coach = coach or Coach(settings.model, effort=settings.effort)
+    coach = coach or make_planner(settings)
     chat_llm = chat or ChatCoach(settings.chat_model, settings.chat_effort)
     playlist_llm = playlist or PlaylistCoach(settings.chat_model, settings.chat_effort)
     song_lookup = resolver or DeezerResolver()

@@ -212,6 +212,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             },
             "units": p.units,
             "training_paces_per_km": inp.paces,
+            "training_paces_s_per_km": {k: list(v) for k, v in inp.paces_raw.items()} if inp.paces_raw else None,
             "race_paces_per_km": self._race_paces(p),
             **({"training_paces_per_mile": inp.paces_mi, "race_paces_per_mile": self._race_paces(p, "mi")} if p.units == "mi" else {}),
             "training_paces_basis": inp.paces_basis,
