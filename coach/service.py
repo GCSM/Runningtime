@@ -112,12 +112,21 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
         """Training paces (computed in code, not by the model), where they came from, and an easy pace for time budgets."""
         today = self.today()
         easy_est = adherence.easy_pace_s_km(acts, today)
+        est = F.estimate(acts, today)            # the best recent effort (race, time trial or hard run): a floor on fitness
         if p.goal_time_s:
-            paces = K.training_paces(K.vdot(p.goal_km * 1000, p.goal_time_s))
+            goal_v = K.vdot(p.goal_km * 1000, p.goal_time_s)
+            weeks_since = (today - date.fromisoformat(est["date"])).days / 7 if est else 0.0
+            work_v = K.working_vdot(goal_v, est["vdot"] if est else None, weeks_since)
+            paces = K.training_paces(work_v)
             goal_easy = sum(paces["easy"]) / 2
-            # Session paces follow the goal, but time and volume BUDGETS must follow what the athlete can actually run: if their real easy
-            # runs are slower than the goal implies, budgeting at the goal's easy pace would promise distances they can't cover in the time.
-            return paces, "goal time (Daniels VDOT)", max(goal_easy, easy_est) if easy_est else goal_easy
+            basis = "goal time (Daniels VDOT)" if abs(work_v - goal_v) < 0.05 else \
+                f"your recent running (VDOT {work_v:.1f}), building toward your goal's VDOT {goal_v:.1f}"
+            # Session paces follow current fitness, but time and volume BUDGETS must follow what the athlete can actually run: if their real easy
+            # runs are slower than the pace implies, budgeting at it would promise distances they can't cover in the time.
+            return paces, basis, max(goal_easy, easy_est) if easy_est else goal_easy
+        if est:
+            paces = K.training_paces(est["vdot"])
+            return paces, f"your recent running (VDOT {est['vdot']:.1f}, from your {est['date']} run)", easy_est or sum(paces["easy"]) / 2
         if easy_est:
             return K.paces_from_easy(easy_est), "recent runs", easy_est
         return None, "none: prescribe by effort (RPE / talk test)", DEFAULT_EASY_PACE_S_KM

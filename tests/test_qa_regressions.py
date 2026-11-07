@@ -116,7 +116,8 @@ def test_the_athletes_real_easy_pace_sets_time_budgets_when_slower_than_the_goal
     runs = [run_activity(i, TODAY - timedelta(days=3 + i * 3), km=8, minutes=56) for i in range(6)]            # 7:00/km
     svc, udb, _ = make_service(tmp_path, p, activities=runs)
     paces, basis, pace = svc._paces(p, runs)
-    assert basis.startswith("goal time") and pace == pytest.approx(420.0) and pace > sum(paces["easy"]) / 2
+    assert basis.startswith("your recent running") and "building toward your goal" in basis        # paces start from current fitness (clamped), not the goal
+    assert pace == pytest.approx(420.0) and pace > sum(paces["easy"]) / 2
     inp = svc._skeleton(p, runs, monday_of(TODAY))
     assert any("much slower than" in w for w in inp.outlook.warnings)                                        # and the athlete is told
     assert any("well beyond what your recent runs support" in w and "understates fitness" in w for w in inp.outlook.warnings)   # the goal itself is flagged as ambitious

@@ -150,10 +150,12 @@ def test_marathon_paces_and_paced_long_runs_only_appear_where_they_belong():
     p, svc, udb, coach, ws = plan(42.195, level="intermediate", nd=5, base=40, weeks=24, mins=80)
     sk = {w["week_start"]: w for w in udb.get_weeks()}
     paced = [w for w in ws if is_paced_long(w)]
-    assert paced and all(sk[w["week_start"]]["phase"] == "peak" and not sk[w["week_start"]]["recovery"] for w in paced)
+    assert paced and all(sk[w["week_start"]]["phase"] in ("build", "peak") and not sk[w["week_start"]]["recovery"] for w in paced)
+    blocks = [int(re.search(r"(\d+) km at marathon pace", w["title"]).group(1)) for w in paced]
+    assert blocks == sorted(blocks) and max(blocks) >= 10 and len(blocks) >= 4                  # marathon-pace blocks grow to 10+ km across several long runs
     for w in paced:
         block = int(re.search(r"(\d+) km at marathon pace", w["title"]).group(1))
-        assert block <= 0.4 * w["distance_km"] + 0.6 and block in MP_BLOCK_KM
+        assert block <= 0.5 * w["distance_km"] + 0.6 and block <= max(MP_BLOCK_KM)
         same_week = [x for x in ws if x["week_start"] == w["week_start"] and x["type"] in K.QUALITY_TYPES]
         assert len(same_week) <= 1                                          # a paced long run counts as a hard effort
     half = plan(21.0975, level="intermediate", nd=5, base=30, weeks=18, mins=80)[4]
@@ -275,3 +277,39 @@ def test_the_engine_switch_picks_the_builder_or_the_model(monkeypatch):
     assert Settings.from_env().plan_engine == "builder"
     monkeypatch.delenv("PLAN_ENGINE")
     assert Settings.from_env().plan_engine == "model"                      # the model stays the default until the builder has proved itself
+
+
+# ---------------------------------------------------------------- variety and benchmarks (gaps found against published planners)
+@pytest.mark.parametrize("goal,kw", [(10.0, dict(level="intermediate", nd=4, base=30, weeks=14)), (21.0975, dict(level="intermediate", nd=4, base=25, weeks=18)),
+                                     (42.195, dict(level="intermediate", nd=5, base=40, weeks=24, mins=80)), (42.195, dict(level="intermediate", nd=4, base=35, weeks=20))])
+def test_the_second_half_of_a_plan_does_not_go_stale(goal, kw):
+    """Garmin Coach's best-known complaint: after ~8 weeks the plan repeats itself. Sessions must keep changing while the plan builds."""
+    p, svc, udb, coach, ws = plan(goal, **kw)
+    sk = udb.get_weeks()
+    half = sk[len(sk) // 2]["week_start"]
+    q = [w for w in ws if w["type"] in K.QUALITY_TYPES and w["week_start"] >= half and "Goal-pace" not in w["title"]]
+    assert len(q) >= 5 and len({w["title"] for w in q}) >= 0.8 * len(q)
+
+
+def test_benchmark_time_trials_recalibrate_paces_and_sit_in_sensible_weeks():
+    p, svc, udb, coach, ws = plan(10.0, level="intermediate", nd=4, base=30, weeks=14)
+    sk = {w["week_start"]: w for w in udb.get_weeks()}
+    bench = [w for w in ws if w["title"].startswith("Benchmark")]
+    assert 1 <= len(bench) <= 2
+    for w in bench:
+        assert not sk[w["week_start"]]["recovery"] and w["type"] in K.QUALITY_TYPES
+        assert "recalibrated" in w["description"] and "own activity" in w["description"]
+        assert re.search(r"[35] km time trial", w["title"])
+    assert not [w for w in plan(5.0, level="beginner", nd=3, base=0, weeks=12)[4] if w["title"].startswith("Benchmark")]       # beginners: no all-out efforts yet
+    assert not [w for w in plan(10.0, level="intermediate", nd=4, base=30, weeks=5)[4] if w["title"].startswith("Benchmark")]  # nor in a very short plan
+
+
+def test_a_completed_benchmark_moves_the_next_plans_paces():
+    """The loop: benchmark run recorded -> fitness estimate -> training paces. A fast time trial makes the next plan's paces faster."""
+    from coach import fitness as F
+    slow = {"id": 1, "date": "2026-12-01", "distance_m": 3000, "moving_s": 16 * 60}
+    fast = {"id": 2, "date": "2026-12-01", "distance_m": 3000, "moving_s": 13 * 60}
+    assert F.run_vdot(fast) > F.run_vdot(slow)
+    goal = 46.0
+    assert K.working_vdot(goal, F.run_vdot(fast), 4) > K.working_vdot(goal, F.run_vdot(slow), 4)
+    assert K.training_paces(K.working_vdot(goal, F.run_vdot(fast), 4))["threshold"][0] < K.training_paces(K.working_vdot(goal, F.run_vdot(slow), 4))["threshold"][0]

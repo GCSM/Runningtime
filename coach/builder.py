@@ -45,9 +45,15 @@ RUN_WALK_START_KM = [(6.0, 0), (10.0, 2), (15.0, 4)]       # baseline weekly km 
 WALK_PACE_FACTOR = 1.12                                    # run/walk sessions cover ground ~12% slower than the same time spent running easy
 
 # Paced portions of long runs: kilometres of marathon / half-marathon pace at occurrence n (0, 1, 2, …).
-MP_BLOCK_KM = [5, 6, 8, 10, 12, 14]
-HMP_BLOCK_KM = [3, 4, 5, 6, 8]
-PACED_LONG_MAX_SHARE = 0.40                                # never more than 40% of the long run at pace
+MP_BLOCK_KM = [5, 6, 8, 10, 12, 13, 15]                    # Pfitzinger's marathon-pace long runs reach 10-12 miles inside a 18-20 mile run
+HMP_BLOCK_KM = [3, 4, 6, 8, 10]
+PACED_LONG_MAX_SHARE = {42.195: 0.50, 21.0975: 0.40}       # share of the long run at pace
+PACED_LONG_FROM = 0.5                                      # paced long runs start in the second half of the training weeks, every other week
+MP_RUN_MINUTES = {42.195: (25, 70), 21.0975: (20, 45)}     # steady runs at marathon / half-marathon pace (Pfitzinger: up to 10-13 miles)
+HILLS = [(6, 45), (8, 45), (8, 60), (10, 60), (8, 75)]     # hill repeats: (reps, seconds uphill), jog back down
+PYRAMIDS = {5.0: [(400, 800, 1200, 800, 400)], 10.0: [(400, 800, 1200, 800, 400), (800, 1200, 1600, 1200, 800)],
+            21.0975: [(800, 1200, 1600, 1200, 800)], 42.195: [(800, 1200, 1600, 1200, 800)]}
+BENCHMARK_SHARE = (0.35, 0.70)                             # benchmark time trials at these fractions of the training weeks
 
 THRESHOLD_SHARE = {42.195: 0.12}                           # share of a week's km that threshold work may take (10% otherwise, marathon 12%)
 THRESHOLD_SHARE_DEFAULT = 0.10
@@ -170,7 +176,7 @@ def warmup_cooldown(a: Athlete) -> tuple[float, float]:
 
 # ------------------------------------------------------------------------------------------------------------------------
 # Session constructors
-def tempo_session(a: Athlete, minutes: int, cruise: bool, *, pace_key: str = "threshold", label: str = "threshold", title_word: str = "Tempo") -> Session:
+def tempo_session(a: Athlete, minutes: int, cruise: bool | int, *, pace_key: str = "threshold", label: str = "threshold", title_word: str = "Tempo") -> Session:
     wu_m, wu_km = warmup_cooldown(a)
     p = a.paces[pace_key]
     mp = pace_key == "marathon"
@@ -181,8 +187,8 @@ def tempo_session(a: Athlete, minutes: int, cruise: bool, *, pace_key: str = "th
     effort = "marathon effort, steady and controlled, RPE 5–6" if mp else (f"half-marathon effort, strong but controlled, RPE 6–7" if hm else f"{label} pace, comfortably hard, RPE 7")
     cue = goal_pace_text(a) + f" ({effort})" if goal_paced else pace_cue(a, pace_key, effort)
     if cruise:
-        each = 6 if minutes <= 24 else 8
-        n = max(2, round(minutes / each))
+        n = cruise if isinstance(cruise, int) and not isinstance(cruise, bool) and cruise >= 2 else max(2, round(minutes / (6 if minutes <= 24 else 8)))
+        each = max(5, round(minutes / n))
         work_s = n * each * 60
         rec_s = (n - 1) * 60
         km = 2 * wu_km + work_s / p + rec_s / (a.easy * 1.2)
@@ -229,6 +235,43 @@ def fartlek_session(a: Athlete, rung: tuple[int, int, int]) -> Session:
     desc = (f"Warm up {wu_m} min easy. Then {reps} × ({mins_text(on_s)} faster by feel at about 5K effort, RPE 7–8, then {mins_text(off_s)} easy jog). "
             f"No watch-watching: the effort matters, not the pace. Cool down {wu_m} min easy.")
     return Session("intervals", f"Fartlek {reps} × {mins_text(on_s)}", desc, km, mins, "by feel: hard but relaxed, RPE 7–8", hard_km=reps * on_s / p)
+
+
+def hill_session(a: Athlete, rung: tuple[int, int]) -> Session:
+    reps, on_s = rung
+    wu_m, wu_km = warmup_cooldown(a)
+    km = 2 * wu_km + reps * (on_s / (a.paces["interval"] * 1.25) + on_s * 1.5 / (a.easy * 1.1))
+    mins = 2 * wu_m + reps * (on_s * 2.5) / 60
+    desc = (f"Warm up {wu_m} min easy to a hill of about 4–6% grade. Then {reps} × {on_s} s uphill, hard but smooth (RPE 8), jogging easily back down "
+            f"for recovery. Strong knees and arms, short quick steps. Cool down {wu_m} min easy.")
+    return Session("intervals", f"Hill repeats {reps} × {on_s} s", desc, km, mins, "hard uphill effort (RPE 8), easy jog down", hard_km=reps * on_s / (a.paces["interval"] * 1.25))
+
+
+def pyramid_session(a: Athlete, steps: tuple[int, ...]) -> Session:
+    wu_m, wu_km = warmup_cooldown(a)
+    p = a.paces["interval"]
+    work_km = sum(steps) / 1000
+    rec_s = 90 if max(steps) <= 800 else 120
+    km = 2 * wu_km + work_km + (len(steps) - 1) * rec_s / (a.easy * 1.25)
+    mins = 2 * wu_m + work_km * p / 60 + (len(steps) - 1) * rec_s / 60
+    labs = " – ".join(str(m) for m in steps)
+    desc = (f"Warm up {wu_m} min easy. Then a ladder: {', '.join(dist_label(m, a.units) for m in steps)} at {pace_cue(a, 'interval', '5K effort, hard but controlled, RPE 8')}, "
+            f"{mins_text(rec_s)} easy jog between each. Cool down {wu_m} min easy.")
+    return Session("intervals", f"Pyramid {labs} m", desc, km, mins, pace_cue(a, "interval", "5K effort"), hard_km=work_km)
+
+
+def benchmark_session(a: Athlete) -> Session:
+    """A time trial that gives the app a clean, current fitness number: paces are recalibrated from it."""
+    km_tt = 3.0 if a.paces["interval"] * 3 / 60 >= 12.5 else 5.0       # long enough (12+ min) for a reliable fitness estimate
+    wu_m, wu_km = warmup_cooldown(a)
+    p = a.paces["interval"] * 1.02
+    km = 2 * wu_km + km_tt
+    mins = 2 * wu_m + km_tt * p / 60
+    lab = K.fmt_dist(km_tt, a.units, 0 if abs(km_tt - round(km_tt)) < 0.05 and a.units == "km" else 1)
+    desc = (f"Warm up {wu_m} min easy with 4 strides. Then run {lab} as fast as you can hold evenly: start controlled, finish strong. "
+            f"Record the time trial as its own activity or lap so the app can read your time. Cool down {wu_m} min easy. "
+            f"Your paces are recalibrated from this result.")
+    return Session("intervals", f"Benchmark: {lab} time trial", desc, km, mins, "evenly paced all-out effort (RPE 9)", hard_km=km_tt)
 
 
 def sharpener_session(a: Athlete, taper_step: int) -> Session:
@@ -311,6 +354,8 @@ def fits(a: Athlete, s: Session, week_km: float, day_minutes: int, budget_km: fl
         cap_min = min(cap_min, day_minutes)
     if s.minutes > cap_min - 1 or s.km > budget_km + 0.05:
         return False
+    if kind == "bench":
+        return True
     share = THRESHOLD_SHARE.get(a.bucket, THRESHOLD_SHARE_DEFAULT) if kind == "tempo" else INTERVAL_SHARE
     return s.hard_km <= share * week_km + 0.05
 
@@ -326,21 +371,29 @@ def tempo_minutes(a: Athlete, p: float) -> int:
     return max(TEMPO_MIN_MINUTES, round((lo + (hi - lo) * p) * s / 5) * 5)
 
 
-def quality_candidates(a: Athlete, kind: str, p: float, week_idx: int, phase: str, taper_step: int) -> list[Session]:
-    """Candidate sessions of a kind from the most demanding rung (for progress p) down to the easiest: the scheduler takes the first that fits."""
+def mp_run_minutes(a: Athlete, p: float) -> int:
+    lo, hi = MP_RUN_MINUTES[a.bucket if a.bucket in MP_RUN_MINUTES else 21.0975]
+    return max(TEMPO_MIN_MINUTES, round((lo + (hi - lo) * p) * LEVEL_TEMPO_SCALE.get(a.level, 1.0) / 5) * 5)
+
+
+def quality_candidates(a: Athlete, kind: str, p: float, occ: int, phase: str, taper_step: int) -> list[Session]:
+    """Candidate sessions of a kind from the most demanding rung (for progress p) down to the easiest: the scheduler takes the first that fits.
+    `occ` is how many sessions of this kind the athlete has had, which rotates the session family so weeks don't repeat."""
     out: list[Session] = []
     if kind == "sharpener":
         return [sharpener_session(a, taper_step)]
+    if kind == "benchmark":
+        return [benchmark_session(a)]
     if kind == "tempo":
         top = tempo_minutes(a, p)
-        cruise = week_idx % 2 == 1 and top >= 20
+        variant = (None, 2, 3)[occ % 3] if top >= 20 else (None, 2)[occ % 2]          # continuous, 2 long reps, 3 shorter reps
         for m in range(top, TEMPO_MIN_MINUTES - 1, -5):
-            out.append(tempo_session(a, m, cruise and m >= 20))
+            out.append(tempo_session(a, m, variant if (variant and m >= 18) else False))
         if not out or out[-1].type != "tempo":
             out.append(tempo_session(a, TEMPO_MIN_MINUTES, False))
         return out
     if kind == "mp-run":
-        top = tempo_minutes(a, p)
+        top = mp_run_minutes(a, p)
         for m in range(top, TEMPO_MIN_MINUTES - 1, -5):
             if a.bucket >= 42:
                 out.append(tempo_session(a, m, False, pace_key="marathon", label="marathon pace", title_word="Marathon-pace run"))
@@ -356,10 +409,15 @@ def quality_candidates(a: Athlete, kind: str, p: float, week_idx: int, phase: st
         for i in range(climb(len(lad), p), -1, -1):
             out.append(interval_session(a, lad[i], at_goal=True))
         return out
-    lad = INTERVALS[a.bucket]                                    # plain intervals
-    for i in range(climb(len(lad), p), -1, -1):
-        out.append(interval_session(a, lad[i]))
-    return out
+    family = ("ladder", "hills", "ladder", "pyramid")[occ % 4]                          # plain intervals rotate through four families
+    if family == "hills":
+        return [hill_session(a, HILLS[i]) for i in range(climb(len(HILLS), p), -1, -1)]
+    if family == "pyramid":
+        pyr = PYRAMIDS[a.bucket]
+        return [pyramid_session(a, pyr[i]) for i in range(climb(len(pyr), p), -1, -1)] + [interval_session(a, INTERVALS[a.bucket][0])]
+    lad = INTERVALS[a.bucket]
+    top = min(len(lad) - 1, climb(len(lad), p) + (1 if occ % 4 == 2 else 0))          # the second ladder visit is one rung up
+    return [interval_session(a, lad[i]) for i in range(top, -1, -1)]
 
 
 def quality_plan(a: Athlete, phase: str, recovery: bool, n_slots: int, week_idx: int, prog: float, *, runwalk: bool, paced_long: bool) -> list[str]:
@@ -432,7 +490,10 @@ def build(ctx: dict) -> dict:
                 long_dates.add(d)
     hard_dates: list[date] = []
     out: list[dict] = []
-    paced_n = 0
+    paced_elig = paced_done = 0
+    occ: dict[str, int] = {}
+    nb = len(train_idx)
+    bench_weeks = {train_idx[round(f * (nb - 1))] for f in BENCHMARK_SHARE} if nb >= 10 else ({train_idx[nb // 2]} if nb >= 6 else set())
     nth_train = 0
     taper_seen = 0
     first_week = weeks[0]["week_start"] if weeks else None
@@ -459,13 +520,15 @@ def build(ctx: dict) -> dict:
         limit = K.quality_limit(a.level, phase, rec, a.run_days)
         # --- long run: plain, or with a pace block in the specific weeks of a marathon / half-marathon build ---
         paced = False
-        if long_d and phase == "peak" and not rec and a.bucket >= 21 and a.level != "beginner" and not a.pain and rw is None \
-                and long_km >= max(8.0, 0.75 * a.peak_long_km) and not _near(long_d, hard_dates, 2) and window_ok(long_d, hard_dates):
-            paced = paced_n % 2 == 0 or (a.bucket >= 42 and paced_n % 2 == 1 and False)
-            paced_n += 1
+        if long_d and phase in ("build", "peak") and not rec and prog >= PACED_LONG_FROM and a.bucket >= 21 and a.level != "beginner" and not a.pain \
+                and rw is None and long_km >= max(8.0, 0.7 * a.peak_long_km) and not _near(long_d, hard_dates, 2) and window_ok(long_d, hard_dates):
+            paced = paced_elig % 2 == 0                    # every other eligible long run carries a pace block
+            paced_elig += 1
         trans = training and rw is None and nth_train >= 2 and run_walk_rung(a, nth_train - 2) is not None
         just_ended = training and nth_train >= 2 and run_walk_rung(a, nth_train - 2) is not None      # a week of continuous running before the first hard session
         kinds = quality_plan(a, phase, rec, limit, wi, prog, runwalk=rw is not None or just_ended, paced_long=paced)
+        if wi in bench_weeks and kinds and not paced and not rec and a.level != "beginner":
+            kinds = ["benchmark"] + kinds[1:]
         if paced:
             hard_dates.append(long_d)
         # --- the week: hard sessions, long run, easy days. If its days can't carry the km, give the hard days longer warm-ups and let easy
@@ -475,13 +538,13 @@ def build(ctx: dict) -> dict:
         for wu, share, thin in ((base_wu, EASY_MAX_OF_LONG, True), (base_wu, 0.95, True), (base_wu, 1.0, True), (base_wu, 1.0, False),
                                 (base_wu + 2, 1.0, False), (base_wu + 4, 1.0, False), (base_wu + 6, 1.0, False)):
             a.wu_override = wu
-            sessions, q_days = place_quality(a, days, kinds, long_dates, hard_dates, race, target, prog, wi, phase, taper_seen)
+            sessions, used, q_days = place_quality(a, days, kinds, long_dates, hard_dates, race, target, prog, occ, phase, taper_seen)
             lk = round(long_km, 1) if long_d else 0.0
             long_s = None
             if long_d:
                 if paced:
-                    block = (MP_BLOCK_KM if a.bucket >= 42 else HMP_BLOCK_KM)[min(paced_n // 2, len(MP_BLOCK_KM if a.bucket >= 42 else HMP_BLOCK_KM) - 1)]
-                    block = min(block, PACED_LONG_MAX_SHARE * lk)
+                    ladder = MP_BLOCK_KM if a.bucket >= 42 else HMP_BLOCK_KM
+                    block = min(ladder[min(paced_done, len(ladder) - 1)], PACED_LONG_MAX_SHARE.get(a.bucket, 0.4) * lk)
                     if block >= 3:
                         long_s = paced_long_session(a, lk, round(block))
                 if long_s is None:
@@ -495,7 +558,7 @@ def build(ctx: dict) -> dict:
             alloc = spread_easy(a, easy_days, remaining, lk, share=share, avoid=near_hard,
                                 medium=(training and not rec and phase in ("build", "peak") and a.bucket >= 21 and rw is None))
             gap = remaining - sum(km for km, _ in alloc)
-            cand = (gap, sessions, long_s, easy_days, alloc)
+            cand = (gap, sessions, long_s, easy_days, alloc, used)
             if best is None or gap < best[0] - 0.2:
                 best = cand
             if gap <= 0.03 * target or not sessions:
@@ -503,7 +566,11 @@ def build(ctx: dict) -> dict:
                     best = cand
                     break
         a.wu_override = None
-        _, sessions, long_s, easy_days, alloc = best
+        _, sessions, long_s, easy_days, alloc, used = best
+        for k in used.values():
+            occ[k] = occ.get(k, 0) + 1
+        if long_s is not None and long_s.hard_km and long_d:
+            paced_done += 1
         if phase == "taper":
             taper_seen += 1
         hard_dates.extend(sessions)
@@ -522,22 +589,27 @@ def build(ctx: dict) -> dict:
     return {"summary": "", "workouts": out}
 
 
-def place_quality(a: Athlete, days, kinds, long_dates, hard_dates, race: date, target: float, prog: float, wi: int, phase: str, taper_seen: int):
-    """Pick the days for this week's hard sessions and the hardest rung of each that fits its day and the week's caps."""
+def place_quality(a: Athlete, days, kinds, long_dates, hard_dates, race: date, target: float, prog: float, occ: dict, phase: str, taper_seen: int):
+    """Pick the days for this week's hard sessions and the hardest rung of each that fits its day and the week's caps. Returns
+    ({date: session}, {date: kind}, days)."""
     q_days = pick_quality_days(a, days, kinds, long_dates, hard_dates, race, taper=phase == "taper")
     sessions: dict[date, Session] = {}
+    used: dict[date, str] = {}
+    seen = dict(occ)
     for d, kind in zip(q_days, kinds):
         avail_min = a.avail[d.weekday()][1]
-        cands = quality_candidates(a, kind, prog, wi, phase, taper_seen)
+        cands = quality_candidates(a, kind, prog, seen.get(kind, 0), phase, taper_seen)
         budget = QUALITY_BUDGET * target / max(1, len(q_days))
-        tkind = "tempo" if kind in ("tempo", "mp-run", "sharpener") else "intervals"
+        tkind = "bench" if kind == "benchmark" else ("tempo" if kind in ("tempo", "mp-run", "sharpener") else "intervals")
         chosen = next((x for x in cands if fits(a, x, target, avail_min, budget, tkind)), None)
-        if chosen is None:        # nothing meets the share caps: the gentlest rung that still fits the day (the caps are guidance, the day is a fact)
+        if chosen is None and kind != "benchmark":        # nothing meets the share caps: the gentlest rung that still fits the day (the caps are guidance, the day is a fact)
             cap_min = min(avail_min, K.run_cap_minutes(a.level, "tempo", a.goal_km)) if avail_min else K.run_cap_minutes(a.level, "tempo", a.goal_km)
             chosen = next((x for x in reversed(cands) if x.minutes <= cap_min - 1 and x.km <= budget + 0.05), None)
         if chosen is not None:
             sessions[d] = chosen
-    return sessions, q_days
+            used[d] = kind
+            seen[kind] = seen.get(kind, 0) + 1
+    return sessions, used, q_days
 
 
 def window_ok(d: date, dates) -> bool:

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from . import knowledge as K
-from .plancheck import retitle
+from .plancheck import is_paced_long, retitle
 from .errors import UserError
 from .models import DAYS
 from .plancheck import mentions_pain
@@ -202,6 +202,55 @@ class ActionsMixin:
         self.db.log("plan", f"Made the next {days} days slightly easier after low execution scores: about {before - after:.1f} km less"
                             f"{', ' + str(downgraded) + ' hard session' + ('s' * (downgraded != 1)) + ' made easy' if downgraded else ''}.")
         return {"changed": changed, "km_removed": round(before - after, 1), "downgraded": downgraded}
+
+    EASE_WEEK = {                    # reason -> (distance factor, make hard sessions easy, rest days first)
+        "tired": (0.85, True, 0),    # run down, stressed, slept badly
+        "sick": (0.75, True, 2),     # a cold or worse: two days off, then back gently
+        "time": (0.70, False, 0),    # a busy week: shorter runs, same shape
+    }
+
+    def ease_week(self, reason: str) -> dict:
+        """'Not feeling 100%': ease the rest of THIS week, as Runna's option and Garmin's rescheduling do. Code decides what changes:
+        tired = ~15% less and no hard sessions; sick = two rest days, then ~25% less and no hard sessions; busy = ~30% shorter, same shape.
+        The race, completed runs and later weeks are untouched; the Monday review rebuilds from what was actually run."""
+        if reason not in self.EASE_WEEK:
+            raise UserError("Pick how you're feeling.")
+        factor, drop_hard, rest_days = self.EASE_WEEK[reason]
+        today = self.today()
+        week_end = today + timedelta(days=6 - today.weekday())
+        rows = [w for w in self.db.get_workouts(today, week_end) if w["status"] == "planned" and w["type"] != "race"]
+        if not rows:
+            raise UserError("There's nothing left to ease this week.")
+        before = after = 0.0
+        changed = downgraded = rested = 0
+        for w in rows:
+            before += w["distance_km"] or 0
+            if (date.fromisoformat(w["date"]) - today).days < rest_days:
+                self.db.update_workout(w["id"], status="skipped", note="Rest day: not feeling well")
+                rested += 1
+                continue
+            fields: dict = {}
+            if drop_hard and (w["type"] in K.QUALITY_TYPES or (w["type"] == "long" and is_paced_long(w))):
+                fields.update(type="easy" if w["type"] != "long" else "long",
+                              title="Easy run" if w["type"] != "long" else "Long run (easy)",
+                              description="Easy, conversational pace. Eased because you weren't feeling 100%: the hard part of this run was dropped, not postponed.",
+                              pace_guidance="RPE 3–4: you could hold a conversation")
+                downgraded += 1
+            if w["distance_km"]:
+                km = w["distance_km"] * factor
+                fields["distance_km"] = round(km * 2) / 2 if km >= 4 else max(1.0, round(km, 1))
+                if w["duration_min"]:
+                    fields["duration_min"] = max(1, int(round(w["duration_min"] * fields["distance_km"] / w["distance_km"])))
+                if "title" not in fields:
+                    fields["title"] = retitle(w["title"], w["distance_km"], fields["distance_km"])
+                after += fields["distance_km"]
+            fields["note"] = {"tired": "Eased: tired or run down", "sick": "Eased: not well", "time": "Shortened: busy week"}[reason]
+            self.db.update_workout(w["id"], **fields)
+            changed += 1
+        self.db.log("plan", f"Eased the rest of this week ({reason}): about {before - after:.1f} km less"
+                            f"{', ' + str(downgraded) + ' hard effort' + ('s' * (downgraded != 1)) + ' made easy' if downgraded else ''}"
+                            f"{', ' + str(rested) + ' rest day' + ('s' * (rested != 1)) if rested else ''}.")
+        return {"changed": changed, "km_removed": round(before - after, 1), "downgraded": downgraded, "rested": rested}
 
     def pain_until(self) -> date | None:
         v = self.db.kv_get("pain_until")

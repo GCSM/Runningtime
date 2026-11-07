@@ -283,6 +283,23 @@ def vdot(distance_m: float, time_s: float) -> float:
     return _vo2_cost(distance_m / t) / _fraction(t)
 
 
+# ---- Training paces that follow what the athlete can run NOW, building toward the goal ------------------------------------
+VDOT_GAIN_PER_WEEK = 0.2      # fitness gained per week of sensible training (about 1 VDOT point per 5 weeks, Daniels' range for a developing runner)
+VDOT_MAX_BELOW_GOAL = 3.0     # evidence is usually an easy run, which understates fitness: never train more than this far below the goal's VDOT
+
+
+def working_vdot(goal_vdot: float, evidence_vdot: float | None, weeks_since_evidence: float = 0.0) -> float:
+    """The VDOT training paces are based on. Training at a goal the athlete can't run yet is the classic way plans go wrong (Garmin Coach's
+    paces are 'just luck', its users say), so: start from recent evidence, let it grow by VDOT_GAIN_PER_WEEK, and never exceed the goal. If the
+    athlete already runs better than the goal says, follow the evidence. With no evidence the goal is all there is."""
+    if evidence_vdot is None:
+        return goal_vdot
+    if evidence_vdot >= goal_vdot:
+        return evidence_vdot
+    grown = evidence_vdot + VDOT_GAIN_PER_WEEK * max(0.0, weeks_since_evidence)
+    return max(goal_vdot - VDOT_MAX_BELOW_GOAL, min(goal_vdot, grown))
+
+
 def _velocity_for_vo2(vo2: float) -> float:
     a, b, c = 0.000104, 0.182258, -(4.60 + vo2)
     return (-b + math.sqrt(b * b - 4 * a * c)) / (2 * a)

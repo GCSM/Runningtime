@@ -58,6 +58,21 @@
   </div>
 </section>
 {% endif %}
+{% if d.has_plan %}
+<details class="card rise" style="padding:12px 16px">
+  <summary class="sm" style="cursor:pointer"><b>Not feeling 100%?</b> Ease this week</summary>
+  <form method="post" action="/plan/ease-week" class="stack" style="margin-top:12px">
+    <label class="sm" for="ease-reason">What's going on?</label>
+    <select id="ease-reason" name="reason">
+      <option value="tired">Tired or run down: lighter week, no hard efforts</option>
+      <option value="sick">Under the weather: two rest days, then easy</option>
+      <option value="time">Busy week: shorter runs, same shape</option>
+    </select>
+    <button>Ease the rest of this week</button>
+    <p class="sm mut">Only this week changes. Your race and later weeks stay as they are, and Monday's review adapts to what you actually ran. Pain or injury? Tell your coach in the run feedback so hard sessions stop altogether.</p>
+  </form>
+</details>
+{% endif %}
 {% if not d.has_plan %}
   {% if d.strava_ready and not d.strava_connected and not d.strava_skipped %}
   <div class="card empty rise">

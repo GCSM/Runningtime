@@ -110,3 +110,14 @@ beginner and 10K), builder narrowly ahead (~55/45). Fixed in the builder afterwa
 "half-marathon-pace" sessions run at threshold pace, threshold work missing from 10K bases, no run in 5K race week, abrupt run/walk -> continuous.
 Sonnet's weaknesses seen: no pace numbers in sessions even with a goal time, fartlek-heavy marathon plans with no medium-long/MP work.
 Re-run: `python tools/plan_eval.py capture|live|compare OUT` (live needs ANTHROPIC_API_KEY).
+
+### Closing the gaps found against other planners (Garmin Coach, Pfitzinger, Hansons, Runna)
+1. **Marathon/half specificity:** paced long runs start in the second half of the build, every other long run, with blocks growing 5→15 km (marathon,
+   up to 50% of the long run) / 3→10 km (half); marathon-pace runs build to 70 min; medium-long runs never sit the day after the long run.
+2. **Variety (Garmin's "repetitive after 8 weeks"):** tempo rotates continuous / 2 reps / 3 reps; intervals rotate ladder / hills / ladder+1 / pyramid;
+   test: >=80% of second-half hard sessions are distinct (was ~50%).
+3. **Pace adaptation:** training paces start from recent evidence (best recent effort, incl. benchmark time trials), grow 0.2 VDOT/week and never exceed
+   the goal's VDOT or sit more than 3 below it (`K.working_vdot`); the plan says so ("your recent running ... building toward your goal"). Builder plans
+   include 1-2 benchmark time trials (3 or 5 km) that recalibrate paces; not for beginners or very short plans.
+4. **Readiness:** "Not feeling 100%" on Today: tired / under the weather / busy week. Code eases only the rest of this week (race and later weeks untouched).
+Not done: separate recovery vs general-aerobic runs; Runna/TrainAsONE internals were unreachable (403), so those comparisons rest on search summaries.

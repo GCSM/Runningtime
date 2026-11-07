@@ -515,6 +515,20 @@ def create_app(settings: Settings | None = None, db: DB | None = None, coach=Non
                          f"{' and ' + str(r['downgraded']) + ' hard session' + ('s' * (r['downgraded'] != 1)) + ' became easy' if r['downgraded'] else ''}. "
                          "Tap “Review & adjust my plan” when you want the weeks after that re-planned too.")
 
+    @app.post("/plan/ease-week")
+    def plan_ease_week(request: Request, reason: str = Form("")):
+        def go():
+            return request.state.svc.ease_week(reason)
+        def msg(r):
+            parts = [f"Done: the rest of this week is about {r['km_removed']:.0f} km lighter"]
+            if r["rested"]:
+                parts.append(f"{r['rested']} rest day{'s' * (r['rested'] != 1)} first")
+            if r["downgraded"]:
+                parts.append(f"{r['downgraded']} hard effort{'s' * (r['downgraded'] != 1)} made easy")
+            return ", ".join(parts) + ". Later weeks are untouched; Monday's review adapts to what you actually ran. Get well soon." if reason == "sick" else \
+                ", ".join(parts) + ". Later weeks are untouched; Monday's review adapts to what you actually ran."
+        return do(go, "/", msg)
+
     @app.post("/plan/ease/dismiss")
     def plan_ease_dismiss(request: Request):
         request.state.svc.dismiss_ease_suggestion()
