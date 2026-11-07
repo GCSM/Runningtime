@@ -176,9 +176,46 @@ def audit(out: pathlib.Path) -> int:
     return failures
 
 
+def compare(out: pathlib.Path) -> None:
+    """Same scenarios, same audit: the code-built planner against the plan the model wrote (model_output.json)."""
+    from coach.builder import BuilderCoach
+    from coach.plancheck import is_paced_long
+    from coach import knowledge as K
+
+    def stats(ws, p, skel):
+        hard = [w for w in ws if w["type"] in K.QUALITY_TYPES or is_paced_long(w)]
+        kinds = sorted({re.sub(r"[\d.:×x]+|\s+", " ", w["title"]).strip().lower() for w in ws if w["type"] in K.QUALITY_TYPES})
+        weeks_ = weeks_from_workouts(ws, skel)
+        train = [w for w in weeks_ if w.phase in ("base", "build", "peak")]
+        return dict(workouts=len(ws), hard=len(hard), distinct_sessions=len(kinds), peak_km=max((w.target_km for w in train), default=0),
+                    peak_long=max((w.long_run_km for w in train), default=0), rules=len(audit_plan(ws, p, skel, TODAY)),
+                    shape=len(audit_shape(weeks_, p.goal_km, p.experience)), avg_week_pct=0)
+
+    for d in sorted(x for x in out.iterdir() if x.is_dir() and (x / "profile.json").exists()):
+        p = Profile.model_validate_json((d / "profile.json").read_text())
+        rows = {}
+        for who, coach in (("builder", BuilderCoach()),) + ((("model", Coach("model", client=_SDK(json.loads((d / "model_output.json").read_text())))),)
+                                                           if (d / "model_output.json").exists() else ()):
+            notes: list[list[str]] = []
+            real = svc_mod.sanitize
+            svc_mod.sanitize = lambda *a, _r=real, **k: (lambda r: (notes.append(r[1]), r)[1])(_r(*a, **k))
+            svc, udb = make_service(p, coach)
+            try:
+                svc.generate_plan()
+                skel = svc._skeleton(p, [], TODAY).weeks
+                rows[who] = {**stats([dict(w) for w in udb.get_workouts()], p, skel), "guard_fixes": sum(len(n) for n in notes)}
+            except Exception as e:  # noqa: BLE001
+                rows[who] = {"error": str(e)[:80]}
+            finally:
+                svc_mod.sanitize = real
+        print(f"\n=== {d.name}")
+        for who, r in rows.items():
+            print(f"  {who:8}", r)
+
+
 if __name__ == "__main__":
     cmd, out = (sys.argv[1], pathlib.Path(sys.argv[2])) if len(sys.argv) >= 3 else (None, None)
-    if cmd not in ("capture", "live", "audit"):
+    if cmd not in ("capture", "live", "audit", "compare"):
         print(__doc__)
         sys.exit(2)
     out.mkdir(parents=True, exist_ok=True)
@@ -186,5 +223,7 @@ if __name__ == "__main__":
         capture(out)
     elif cmd == "live":
         live(out)
+    elif cmd == "compare":
+        compare(out)
     else:
         sys.exit(1 if audit(out) else 0)
