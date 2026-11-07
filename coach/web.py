@@ -27,7 +27,7 @@ from .chat import ChatCoach, ChatService
 from .config import Settings
 from .errors import explain
 from .db import DB
-from .builder import BuilderCoach
+from .builder import BuilderCoach, FallbackCoach
 from .llm import Coach
 from .models import DAYS, KM_PER_MI, DayAvail, Profile
 from .service import CoachService, UserError
@@ -66,7 +66,9 @@ def goal_seconds(f) -> int | None:
 
 def make_planner(settings: Settings):
     """Who writes the day-by-day plan: the code-built planner (PLAN_ENGINE=builder) or the language model (default)."""
-    return BuilderCoach() if settings.plan_engine == "builder" else Coach(settings.model, effort=settings.effort)
+    if settings.plan_engine == "builder":
+        return BuilderCoach()
+    return FallbackCoach(Coach(settings.model, effort=settings.effort))          # the model first; the code-built planner if it cannot finish
 
 
 def create_app(settings: Settings | None = None, db: DB | None = None, coach=None, strava_factory=None, clock=None, chat=None, playlist=None, resolver=None, spotify_factory=None) -> FastAPI:

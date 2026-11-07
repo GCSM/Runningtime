@@ -332,7 +332,16 @@ def test_claude_refusal_and_truncation_are_reported():
     with pytest.raises(RuntimeError, match="declined"):
         Coach("m", client=FakeSDK([_reply([], "refusal")])).plan({}, mode="generate")
     with pytest.raises(RuntimeError, match="cut off"):
-        Coach("m", client=FakeSDK([_reply([], "max_tokens")])).plan({}, mode="generate")
+        Coach("m", client=FakeSDK([_reply([], "max_tokens")] * 3)).plan({}, mode="generate")
+
+
+def test_a_truncated_answer_is_retried_briefer_with_more_room_and_less_thinking():
+    """The reported failure: changing 5K -> half re-plans a long stretch and the first answer hit the token cap."""
+    sdk = FakeSDK([_reply([], "max_tokens"), _reply([PLAN])])
+    assert Coach("m", client=sdk, effort="high").plan({}, mode="adjust")["summary"] == "hi"
+    first, second = sdk.calls
+    assert second["max_tokens"] > first["max_tokens"] and second["output_config"]["effort"] == "low" and first["output_config"]["effort"] == "high"
+    assert "cut off" in second["messages"][0]["content"] and "ONE short sentence" in second["messages"][0]["content"]
 
 
 # ---- friendly API-key / Anthropic error handling -------------------------------------------

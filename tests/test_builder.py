@@ -11,7 +11,7 @@ from datetime import date, timedelta
 import pytest
 
 from coach import knowledge as K
-from coach.builder import (HMP_BLOCK_KM, MP_BLOCK_KM, RUN_WALK, BuilderCoach, build, run_walk_for, summary_text, window_ok)
+from coach.builder import (FallbackCoach, HMP_BLOCK_KM, MP_BLOCK_KM, RUN_WALK, BuilderCoach, build, run_walk_for, summary_text, window_ok)
 from coach.config import Settings
 from coach.db import DB
 from coach.models import DAYS, DayAvail, Profile
@@ -272,7 +272,8 @@ def test_the_engine_switch_picks_the_builder_or_the_model(monkeypatch):
     from coach.llm import Coach
     from coach.web import make_planner
     assert isinstance(make_planner(Settings(plan_engine="builder")), BuilderCoach)
-    assert isinstance(make_planner(Settings(plan_engine="model")), Coach)
+    m = make_planner(Settings(plan_engine="model"))
+    assert isinstance(m, FallbackCoach) and isinstance(m.primary, Coach)
     monkeypatch.setenv("PLAN_ENGINE", "Builder ")
     assert Settings.from_env().plan_engine == "builder"
     monkeypatch.delenv("PLAN_ENGINE")
@@ -325,3 +326,25 @@ def test_a_long_run_with_a_pace_block_has_three_easy_days_either_side(goal, kw):
         d0 = date.fromisoformat(w["date"])
         others = [x for x in ws if x is not w and (x["type"] in K.QUALITY_TYPES or is_paced_long(x)) and x["type"] != "race"]
         assert not [x for x in others if abs((date.fromisoformat(x["date"]) - d0).days) < 3], (w["date"], [x["date"] for x in others if abs((date.fromisoformat(x["date"]) - d0).days) < 3])
+
+
+def test_when_the_model_cannot_finish_the_app_builds_the_plan_and_says_so_but_config_errors_still_show():
+    """The reported failure: switching 5K -> half marathon, 'the coach's answer was cut off'."""
+    from coach.errors import CoachUnavailable
+
+    class Broken:
+        def __init__(self, exc):
+            self.exc = exc
+
+        def plan(self, ctx, *, mode, feedback=None):
+            raise self.exc
+
+    p, svc, udb, coach = make(21.0975, level="intermediate", nd=4, base=25, weeks=14)
+    svc.coach = FallbackCoach(Broken(RuntimeError("The coach's answer was cut off; try again.")))
+    text = svc.generate_plan()
+    assert "couldn't finish this plan" in text and "cut off" in text
+    ws = udb.get_workouts()
+    assert sum(w["type"] == "race" for w in ws) == 1 and not audit_plan(ws, p, skeleton(udb), TODAY, check_volume=False)
+    svc.coach = FallbackCoach(Broken(CoachUnavailable("No Anthropic API key is configured.")))
+    with pytest.raises(CoachUnavailable):
+        svc.generate_plan()

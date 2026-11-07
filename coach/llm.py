@@ -130,20 +130,28 @@ class Coach:
             task += "\n\nYour previous attempt was corrected by validation. Avoid these problems:\n- " + "\n- ".join(feedback[:12])
         task += "\n\nRespond by calling the submit_plan tool exactly once. Do not write any other text."
         prompt = f"{task}\n\n```json\n{json.dumps(context, indent=1)}\n```"
-        for attempt in range(2):
+        short = ("\n\nIMPORTANT: your previous answer was cut off because it was too long. Keep every title under 8 words, every description to ONE short "
+                 "sentence (a few words for easy runs), and every pace_guidance under 12 words. Cover every week through race day.")
+        truncated = 0
+        for attempt in range(3):
+            if attempt >= 2 and not truncated:
+                break                                                # one retry for a missing tool call; up to two for truncation
             # Forced tool_choice (any/tool) is rejected by current models, so use auto + strict schema + instruction.
             resp = self.client.messages.create(
                 model=self.model,
-                max_tokens=16000,
+                max_tokens=20000 if truncated else 16000,        # (above ~21k the SDK insists on streaming)
                 system=SYSTEM,
                 tools=[TOOL],
                 tool_choice={"type": "auto"},
-                output_config={"effort": self.effort},
-                messages=[{"role": "user", "content": prompt}],
+                output_config={"effort": "low" if truncated else self.effort},      # thinking tokens count toward the cap: think less on the retry
+                messages=[{"role": "user", "content": prompt + (short if truncated else "")}],
             )
             if resp.stop_reason == "refusal":
                 raise RuntimeError("The model declined this request. Try rephrasing your notes.")
             if resp.stop_reason == "max_tokens":
+                truncated += 1
+                if attempt < 2:
+                    continue                                         # a long plan (many weeks) can overflow: ask again, briefer and with less thinking
                 raise RuntimeError("The coach's answer was cut off; try again.")
             for block in resp.content:
                 if block.type == "tool_use" and block.name == "submit_plan":

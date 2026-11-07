@@ -128,3 +128,9 @@ blocks, consistent taper sharpeners. Sonnet's plans: paces missing or undefined,
 duplicated text, and in one plan a 30 km run with 14 km at marathon pace three weeks out. Builder defects the reviewer found: duplicated pace/RPE sentence when no
 pace is known and "goal pace" race text with no goal (both fixed), recovery weeks are plain easy runs, hard days can crowd (marathon-pace run + paced long run
 3 days apart), 5K run/walk -> continuous jump (softened with a transition sentence only).
+
+### Incident: 5K -> half marathon switch failed with "the coach's answer was cut off"
+Changing goal/schedule re-plans from today to race day with the model; a longer plan (plus thinking tokens) overflowed the 16k output cap. Fixes: on
+truncation the model is asked again, briefer (one-sentence descriptions) with a 20k cap and low effort; if it still can't finish (cut off, no tool call,
+refusal) the code-built planner writes the plan and the summary says so (`FallbackCoach`). Missing API key / config errors are not hidden. Not reproducible
+with the test doubles (the code-built and reference planners handled 1,000+ simulated 5K->half switches), because it is a model-output-length failure.
