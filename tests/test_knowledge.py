@@ -333,3 +333,20 @@ def test_prompt_states_the_rules_the_model_asked_about():
     assert '"intervals"' in s and "fartlek" in s and "marathon or half-marathon pace" in s and '"tempo"' in s     # types for hills / fartlek / goal-pace blocks
     assert "easy_pace_s_per_km_estimate" in s and "race_paces_per_km" in s and "unknown" in s
     assert "16–22" not in " ".join(sum(K.workout_menu(42.195, "intermediate").values(), []))      # no medium-long run the caps make impossible
+
+
+@pytest.mark.parametrize("goal,level,days,base,weeks", [(42.195, "intermediate", 4, 35, 20), (42.195, "intermediate", 5, 40, 20), (21.0975, "intermediate", 5, 30, 14),
+                                                         (10.0, "intermediate", 4, 25, 16)])
+def test_recovery_weeks_cut_the_long_run_as_well_as_the_week(goal, level, days, base, weeks):
+    """Found by the live coach test: a 32 km recovery week kept a 19 km long run, leaving ~4 km for each weekday run."""
+    from datetime import date, timedelta
+    from coach.skeleton import build_skeleton_info
+    t = date(2026, 11, 9)
+    w, _ = build_skeleton_info(plan_start=t, today=t, race_date=t + timedelta(weeks=weeks, days=-1), goal_km=goal, baseline_km=base, experience=level,
+                               weekly_minutes=600, long_day_minutes=300, easy_pace_s_km=390, run_days=days)
+    rec = [i for i, x in enumerate(w) if x.recovery]
+    assert rec
+    for i in rec:
+        prior = max(x.long_run_km for x in w[max(0, i - 4):i])
+        assert w[i].long_run_km <= 0.75 * prior + 0.01, (i, w[i].long_run_km, prior)
+        assert w[i].long_run_km <= 0.55 * w[i].target_km or goal <= 10     # and no recovery week is mostly one long run

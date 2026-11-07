@@ -77,7 +77,7 @@ def build_skeleton_info(
 
     recent_longs: list[float] = [longest_recent_km] if longest_recent_km > 0 else []
 
-    def long_run(week_km: float, grow: bool = True) -> float:
+    def long_run(week_km: float, grow: bool = True, recovery: bool = False) -> float:
         """The long run for a week: its share/size/time limits, and growth of at most +10% or +2.5 km on the longest of the last four weeks.
         With no history the first long run is capped at 40% of the week, so a short week can't open with a huge long run."""
         raw = K.long_run_km(week_km, goal_km, experience, run_days, long_day_minutes, pace_s)
@@ -85,6 +85,8 @@ def build_skeleton_info(
             prior = max(recent_longs[-4:], default=0.0)
             allowed = max(prior * (1 + K.LONG_RUN_GROWTH_PCT), prior + K.LONG_RUN_GROWTH_FLOOR_KM) if prior > 0 else 0.40 * week_km
             raw = min(raw, math.floor(allowed * 2) / 2)
+            if recovery and prior > 0:                       # a recovery week cuts the long run too, not just the weekday runs
+                raw = min(raw, math.floor(K.RECOVERY_FACTOR * prior * 2) / 2)
         recent_longs.append(raw)
         return raw
 
@@ -98,7 +100,7 @@ def build_skeleton_info(
         week_km = level * K.RECOVERY_FACTOR if recovery else level
         frac = i / n_train
         phase = "base" if frac < 0.4 else "build" if frac < 0.8 else "peak"
-        weeks.append(Week(start + timedelta(weeks=i), phase, recovery, False, round(week_km * 2) / 2, long_run(week_km)))
+        weeks.append(Week(start + timedelta(weeks=i), phase, recovery, False, round(week_km * 2) / 2, long_run(week_km, recovery=recovery)))
 
     for k, mult in enumerate(mults):
         i = n_train + k
