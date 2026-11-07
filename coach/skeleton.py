@@ -57,6 +57,7 @@ def build_skeleton_info(
     run_days: int = 4,
     baseline_source: str = "stated",
     longest_recent_km: float = 0.0,
+    other_day_minutes: list[int] | None = None,
 ) -> tuple[list[Week], VolumeOutlook]:
     """Weeks from monday(today) to the race week, plus a description of the volume plan. Phases are positioned over the
     whole plan (plan_start..race); the ramp starts from `baseline_km` at the current week."""
@@ -69,10 +70,16 @@ def build_skeleton_info(
 
     pace_s = easy_pace_s_km or DEFAULT_EASY_PACE_S_KM
     low, target, high = K.peak_range(goal_km, experience)
-    time_cap = weekly_minutes / (pace_s / 60)
+    # What the athlete's days can really carry (not just minutes / pace: a 4-hour long-run day can't hold more than the long-run caps allow)
+    time_cap = (K.run_capacity_km(experience, goal_km, other_day_minutes, long_day_minutes, pace_s) if other_day_minutes is not None
+                else weekly_minutes / (pace_s / 60))
     cur = max(baseline_km, MIN_BASE_KM)
     freq_cap = K.frequency_cap_km(experience, goal_km, run_days, pace_s)
-    cap = max(min(target, time_cap, freq_cap), cur)    # never push volume below what they already do; time and run frequency are hard ceilings
+    ceiling = min(time_cap, freq_cap)                  # what their days and run frequency can carry
+    # Aim for the published target; an athlete already above it keeps their volume (up to 25% over the top of the range), but never more than
+    # their days can carry: a plan that targets more than can be run only under-delivers silently.
+    cap = min(ceiling, max(target, min(cur, high * 1.25)))
+    cap = max(cap, MIN_BASE_KM)
     first = max(0, (monday(today) - start).days // 7)
 
     recent_longs: list[float] = [longest_recent_km] if longest_recent_km > 0 else []
@@ -95,8 +102,10 @@ def build_skeleton_info(
     # (Published plans don't reach their peak early and hold it: the biggest long run comes once or twice, in the last weeks before the
     # taper. The ramp is the gentler of "as fast as is safe" and "evenly spread so the peak lands at the end".)
     train = list(range(first, n_train))
-    recov = {i for i in train if i % K.RECOVERY_EVERY == K.RECOVERY_EVERY - 1 and i != 0 and i < n_train - 1 and n_train >= K.MIN_WEEKS_FOR_RECOVERY}
-    # (absolute week index, not 'relative to the current week': a review on the Monday of a step-back week must keep it a step-back week)
+    # Step-back weeks every fourth week, counted BACK from the end so the plan finishes with its peak block (two build weeks) before the taper,
+    # not a step-back right before the biggest weeks. Absolute week indexes, not 'relative to the current week': a review on the Monday of a
+    # step-back week must keep it a step-back week, and the schedule doesn't shift from one review to the next.
+    recov = {i for i in train if n_train >= K.MIN_WEEKS_FOR_RECOVERY and i >= 2 and i <= n_train - 3 and (n_train - 3 - i) % K.RECOVERY_EVERY == 0}
     m = sum(1 for i in train if i not in recov)                  # number of build (non-recovery) weeks from here
     mid = first > 0                                              # a mid-plan rebuild: the baseline is what was ALREADY achieved, so this week steps up from it
     off = 1 if mid else 0
@@ -132,16 +141,22 @@ def build_skeleton_info(
             j += 1
         weeks.append(Week(start + timedelta(weeks=i), phase, recovery, False, round(week_km * 2) / 2, lr))
 
+    long_shares = K.taper_long_shares(goal_km)
+    taper_longs = [x for x in long_shares][-max(0, taper - 1):] if taper > 1 else []
+    peak_training_long = max([w.long_run_km for w in weeks] + ([longest_recent_km] if longest_recent_km else []) + [peak_long * 0.0], default=0.0)
     for k, mult in enumerate(mults):
         i = n_train + k
         if i < first:
             continue
         race = i == n - 1
         week_km = level * mult
-        if race:  # the race itself is part of race-week volume; leave room for a short shakeout
-            week_km = math.ceil(max(week_km, goal_km + 6) * 2) / 2
-        weeks.append(Week(start + timedelta(weeks=i), "race" if race else "taper", False, race,
-                          round(week_km * 2) / 2, 0.0 if race else long_run(week_km)))
+        if race:  # the race itself is part of race week; plus a modest amount of easy running around it
+            week_km = K.race_week_km(goal_km, level)
+            long_km = 0.0
+        else:
+            share = taper_longs[k] if k < len(taper_longs) else 0.5
+            long_km = min(long_run(week_km), math.floor(share * max(peak_training_long, 1.0) * 2) / 2)
+        weeks.append(Week(start + timedelta(weeks=i), "race" if race else "taper", False, race, round(week_km * 2) / 2, long_km))
 
     training = [w for w in weeks if w.phase in ("base", "build", "peak")]
     peak = max((w.target_km for w in training), default=round(cur * 2) / 2)
@@ -160,7 +175,8 @@ def build_skeleton_info(
     )
     outlook.warnings = K.readiness_warnings(
         goal_km, experience, peak_km=peak, peak_long_km=peak_long, limit=limit, time_cap_km=time_cap, long_day_minutes=long_day_minutes,
-        weekly_minutes=weekly_minutes, pace_s_km=pace_s, weeks_to_race=wtr, min_weeks_=outlook.min_weeks, ideal_low=low)
+        weekly_minutes=weekly_minutes, pace_s_km=pace_s, weeks_to_race=wtr, min_weeks_=outlook.min_weeks, ideal_low=low,
+        baseline_km=baseline_km if baseline_source == "stated" else 0.0, run_days=run_days)
     return weeks, outlook
 
 

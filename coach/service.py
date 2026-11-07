@@ -84,7 +84,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
     def _baseline(self, p: Profile, acts: list[dict], *, trust_actuals: bool) -> tuple[float, str]:
         """How much the athlete currently runs per week, and where that number came from. Never silently 0."""
         today = self.today()
-        real = adherence.recent_baseline_km(acts, today)            # mean of last 4 complete weeks; None if no history at all
+        real = adherence.recent_baseline_km(acts, today, fill_km=p.baseline_km)   # mean of last 4 complete weeks (weeks before the first run count as the stated volume); None if no complete week yet
         if real is not None and (real >= 5 or trust_actuals):
             return real, "strava"
         last = max((date.fromisoformat(a["date"]) for a in acts), default=None)
@@ -128,6 +128,7 @@ class CoachService(ActionsMixin, ProgressMixin, ExecutionMixin):
             experience=p.experience, weekly_minutes=p.weekly_minutes, long_day_minutes=p.long_day_minutes,
             easy_pace_s_km=pace, run_days=run_days, baseline_source=source,
             longest_recent_km=max((a["distance_m"] / 1000 for a in acts if a["date"] >= (today - timedelta(days=28)).isoformat()), default=0.0),
+            other_day_minutes=[a.minutes for d, a in p.availability.items() if a.available and d != p.long_run_day],
         )
         return PlanInputs(weeks, pace, outlook, paces, basis, run_days)
 

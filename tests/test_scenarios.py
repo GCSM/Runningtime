@@ -53,7 +53,8 @@ def skeleton_problems(goal, level, n_weeks, base, minutes, days, long_min) -> li
     out, who = [], f"{K.goal_name(goal)}/{level}/{n_weeks}w/base{base}/{minutes}min"
     low, target, high = K.peak_range(goal, level)
     cur = max(base, K.MIN_BASE_KM)
-    time_cap = minutes / (PACE / 60)
+    MIN_BASE = K.MIN_BASE_KM
+    time_cap = min(minutes / (PACE / 60), K.frequency_cap_km(level, goal, days, PACE))     # what their days and run frequency can carry
     train = [w for w in weeks if w.phase in ("base", "build", "peak")]
 
     if weeks[0].week_start != monday(TODAY) or not weeks[-1].race_week or weeks[-1].week_start != monday(race):
@@ -61,8 +62,8 @@ def skeleton_problems(goal, level, n_weeks, base, minutes, days, long_min) -> li
     order = [PHASE_ORDER.index(w.phase) for w in weeks]
     if order != sorted(order):
         out.append(f"{who}: phases out of order {[w.phase for w in weeks]}")
-    if weeks[0].target_km < cur - 0.5:
-        out.append(f"{who}: starts below the athlete's current volume ({weeks[0].target_km} < {cur})")
+    if weeks[0].target_km < min(cur, time_cap, high * 1.25) - 0.5:
+        out.append(f"{who}: starts below what the athlete does now and can carry ({weeks[0].target_km} < {min(cur, time_cap, high * 1.25):.1f})")
 
     last_normal = None
     for w in train:
@@ -73,25 +74,25 @@ def skeleton_problems(goal, level, n_weeks, base, minutes, days, long_min) -> li
         if last_normal is not None and w.target_km > last_normal + K.max_weekly_increase_km(last_normal, level) + 0.75:
             out.append(f"{who}: week {w.week_start} jumps {last_normal}->{w.target_km} (limit {K.max_weekly_increase_km(last_normal, level):.1f})")
         last_normal = w.target_km
-        if w.target_km > max(time_cap, cur) + 0.75:
+        if w.target_km > max(time_cap, MIN_BASE) + 0.75:
             out.append(f"{who}: week {w.week_start} {w.target_km} km exceeds the time budget {time_cap:.1f}")
 
     if train:
         peak = max(w.target_km for w in train)
-        if peak > max(high, cur) + 0.75:
+        if peak > max(high * 1.25, MIN_BASE) + 0.75:
             out.append(f"{who}: peak {peak} above published high {high}")
         if peak < weeks[0].target_km - 0.5:
             out.append(f"{who}: peak {peak} below start {weeks[0].target_km}")
         if o.limit == "goal" and abs(peak - target) > 1.0:
             out.append(f"{who}: limit=goal but peak {peak} != target {target}")
         # time-limited: the peak sits at the schedule's capacity, or at the athlete's current volume if that is already higher
-        if o.limit == "time" and not (time_cap < target - 0.5 and abs(peak - max(time_cap, cur)) <= 1.0):
+        if o.limit in ("time", "frequency") and not (time_cap < target - 0.5 and abs(peak - max(time_cap, MIN_BASE)) <= 1.0):
             out.append(f"{who}: limit=time inconsistent (peak {peak}, cap {time_cap:.1f}, target {target})")
         if o.limit == "ramp" and peak >= min(target, time_cap) - 0.25:
             out.append(f"{who}: limit=ramp but peak reached the cap")
         if o.limit == "none" and cur < target and train:
             out.append(f"{who}: limit=none though baseline {cur} < target {target}")
-        if weeks[-1].target_km > max(0.65 * peak, goal + 6) + 0.75:
+        if weeks[-1].target_km > K.race_week_km(goal, peak) + 0.75:
             out.append(f"{who}: race week {weeks[-1].target_km} too high vs peak {peak}")
     for w in weeks:
         if w.race_week:

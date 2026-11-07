@@ -40,18 +40,24 @@ def weekly_km(activities: list[dict]) -> dict[date, float]:
     return dict(totals)
 
 
-def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4) -> float | None:
-    """Mean weekly km over the last `weeks` *complete* weeks (ignoring one low week among steady ones), or None if there is no history at all."""
+def recent_baseline_km(activities: list[dict], today: date, weeks: int = 4, fill_km: float = 0.0) -> float | None:
+    """Mean weekly km over the last `weeks` *complete* weeks, or None if there are no complete weeks of history.
+
+    Weeks before the athlete's first recorded run are *unknown*, not zero (a runner who connected Strava two weeks ago hasn't stopped
+    running before that): they count as `fill_km` (the stated weekly distance). Zeros after the first run are real. A planned step-back
+    week (or one off week) among otherwise steady weeks is ignored, so a plan rebuilt every Monday doesn't forget its own progression.
+    """
     if not activities:
         return None
     totals = weekly_km(activities)
     this_wk = monday(today)
-    vals = [totals.get(this_wk - timedelta(weeks=i), 0.0) for i in range(1, weeks + 1)]
+    first_wk = monday(min(date.fromisoformat(a["date"]) for a in activities))
+    if first_wk >= this_wk:
+        return None                                   # only this (incomplete) week so far
+    vals = [totals.get(this_wk - timedelta(weeks=i), 0.0) if this_wk - timedelta(weeks=i) >= first_wk else fill_km for i in range(1, weeks + 1)]
     top = max(vals)
-    if weeks >= 4 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
-        # A planned step-back week (or one off week) among otherwise steady weeks shouldn't pull the baseline down: when rebuilt every
-        # Monday, a plan would otherwise forget its own progression after each recovery week.
-        vals = sorted(vals, reverse=True)[:weeks - 1]
+    if weeks >= 4 and top > 0 and sum(1 for v in vals if v >= 0.5 * top) >= weeks - 1:
+        vals = sorted(vals, reverse=True)[:2]         # the two best weeks represent current capability; one step-back week doesn't count against it
     return sum(vals) / len(vals)
 
 

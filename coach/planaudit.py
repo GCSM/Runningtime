@@ -59,7 +59,7 @@ def audit_shape(weeks: list[Week], goal_km: float, level: str) -> list[str]:
     run = 0
     for i, w in enumerate(train):
         run = 0 if w.recovery else run + 1
-        if run > K.RECOVERY_EVERY and n >= K.MIN_WEEKS_FOR_RECOVERY:
+        if run > K.RECOVERY_EVERY + 1 and n >= K.MIN_WEEKS_FOR_RECOVERY:
             v.append(f"{run} build weeks in a row without a step-back week (week of {w.week_start})")
         if w.recovery and i:
             prev = max((x for x in train[:i] if not x.recovery), key=lambda x: x.week_start, default=None)

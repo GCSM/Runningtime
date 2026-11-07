@@ -165,6 +165,35 @@ def taper_multipliers(goal_km: float) -> list[float]:
     return list(TAPER[_bucket(goal_km)])
 
 
+# Race week: the race itself is not "volume to build", so the week is the race PLUS a modest amount of easy running around it (published
+# marathon plans run about 15-25 km that week besides the race, shorter races a little more of their peak week).
+RACE_WEEK_EXTRA_SHARE = {5.0: 0.30, 10.0: 0.30, 21.0975: 0.25, 42.195: 0.22}     # of the peak training week, not counting the race
+RACE_WEEK_EXTRA_MIN_KM = 6.0
+
+
+def race_week_km(goal_km: float, peak_level_km: float) -> float:
+    """Target for race week INCLUDING the race."""
+    extra = max(RACE_WEEK_EXTRA_MIN_KM, RACE_WEEK_EXTRA_SHARE[_bucket(goal_km)] * peak_level_km)
+    return goal_km + extra
+
+
+# Long runs in the taper weeks before race week, as a share of the peak long run (Higdon marathon: 20 mi peak, then 12 mi, then 8 mi, then race).
+TAPER_LONG_SHARE = {5.0: [], 10.0: [], 21.0975: [0.65], 42.195: [0.62, 0.42]}
+
+
+def taper_long_shares(goal_km: float) -> list[float]:
+    return list(TAPER_LONG_SHARE[_bucket(goal_km)])
+
+
+def run_capacity_km(level: str, goal_km: float, other_day_minutes: list[int], long_day_minutes: int, pace_s_km: float) -> float:
+    """Weekly km the athlete's days can actually carry: each weekday run is limited by its day's minutes AND the per-run cap, the long run
+    by its day, the long-run time cap and the event's long-run distance cap (so spare minutes on the long day don't count as weekly volume)."""
+    wk_cap = run_cap_minutes(level, "easy", goal_km)
+    others = sum(min(m, wk_cap) if m else wk_cap for m in other_day_minutes) * 60 / pace_s_km
+    long_km = min((long_day_minutes or long_run_max_minutes(goal_km)) * 60 / pace_s_km, long_run_max_minutes(goal_km) * 60 / pace_s_km, long_run_cap_km(goal_km, level))
+    return others + long_km
+
+
 # ---- 7. Plan length ----------------------------------------------------------------------------------------------
 MIN_WEEKS = {  # (beginner, intermediate, advanced)
     5.0: (8, 6, 4), 10.0: (10, 8, 6), 21.0975: (12, 10, 8), 42.195: (20, 16, 16),
@@ -330,16 +359,24 @@ def workout_menu(goal_km: float, level: str) -> dict[str, list[str]]:
 
 # ---- Is the plan we can build actually enough for the goal? ------------------------------------------------------
 MIN_PEAK_LONG_KM = {5.0: 5.0, 10.0: 8.0, 21.0975: 13.0, 42.195: 28.0}   # shortest peak long run that still prepares for the event
+MIN_RUN_DAYS = {5.0: 2, 10.0: 3, 21.0975: 3, 42.195: 4}                 # fewer than this is flagged (the setup form allows 2-6)
 MIN_VOLUME_SHARE = 0.85                                                   # peak weekly km below 85% of the published low end is flagged
 
 
 def readiness_warnings(goal_km: float, level: str, *, peak_km: float, peak_long_km: float, limit: str, time_cap_km: float,
                        long_day_minutes: int, weekly_minutes: int, pace_s_km: float, weeks_to_race: int, min_weeks_: int,
-                       ideal_low: float) -> list[str]:
+                       ideal_low: float, baseline_km: float = 0.0, run_days: int = 0) -> list[str]:
     """Plain-language reasons the plan we can build would under-prepare the athlete, each with what to change."""
     out: list[str] = []
     goal = goal_name(goal_km)
     need_long = MIN_PEAK_LONG_KM[_bucket(goal_km)]
+    ceiling = min(time_cap_km, 10 ** 6)
+    if baseline_km and ceiling < 0.9 * baseline_km:
+        out.append(f"Your available days and minutes only support about {ceiling:.0f} km a week, which is less than the {baseline_km:.0f} km you "
+                   f"say you run now. Add minutes or a run day, or lower your current weekly distance, so the plan matches what you can do.")
+    if run_days and run_days < MIN_RUN_DAYS[_bucket(goal_km)]:
+        out.append(f"A {goal} plan works best with at least {MIN_RUN_DAYS[_bucket(goal_km)]} run days a week; you chose {run_days}. "
+                   f"Training on fewer days limits how much safe volume and variety it can hold.")
     if peak_long_km < need_long:
         mins = int(math.ceil(need_long * pace_s_km / 60 / 5) * 5)
         if long_day_minutes and long_day_minutes < mins:
